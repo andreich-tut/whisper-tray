@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir *)",
+      "Bash(python *)",
+      "Bash(find *)",
+      "Bash(python3 *)",
+      "Bash(black *)",
+      "Bash(pip install *)",
+      "Bash(isort *)",
+      "Bash(flake8 *)"
+    ]
+  },
+  "$version": 3
+}

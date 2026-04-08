@@ -1,0 +1,46 @@
+name: Python CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Lint with flake8
+        run: flake8 whisper_tray/ --max-line-length=88
+
+      - name: Check formatting with black
+        run: black --check whisper_tray/
+
+      - name: Check imports with isort
+        run: isort --check-only whisper_tray/
+
+      - name: Type check with mypy
+        run: mypy whisper_tray/
+
+      - name: Security check with bandit
+        run: bandit -r whisper_tray/
+
+      - name: Run tests
+        run: pytest

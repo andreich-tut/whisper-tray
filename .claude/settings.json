@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /home/ilya/dev/ai/whisper-tray log --oneline -5)"
+    ]
+  }
+}
