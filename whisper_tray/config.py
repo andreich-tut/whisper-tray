@@ -105,7 +105,8 @@ class AppConfig:
         """Log current configuration for debugging."""
         logger.info(
             f"Model config: size={self.model.model_size}, "
-            f"device={self.model.device}, compute={self.model.compute_type}"
+            f"device={self.model.device}, compute={self.model.compute_type}, "
+            f"language={self.model.language}"
         )
         logger.info(f"Hotkey: {'+'.join(sorted(self.hotkey.hotkey))}")
         logger.info(

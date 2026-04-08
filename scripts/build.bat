@@ -74,7 +74,7 @@ if defined CUDA_PATH (
 REM Step 6: Build with PyInstaller
 echo [6/7] Building WhisperTray.exe...
 echo This may take a few minutes...
-pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir whisper_tray/whisper_tray.py >> "%LOGFILE%" 2>&1
+pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir --collect-binaries ctranslate2 --collect-binaries faster_whisper whisper_tray/whisper_tray.py >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
     echo ERROR: Build failed - see %LOGFILE%
@@ -90,15 +90,26 @@ set "INTERNAL_DIR=dist\WhisperTray\_internal"
 if not exist "%INTERNAL_DIR%\faster_whisper\assets" mkdir "%INTERNAL_DIR%\faster_whisper\assets"
 xcopy "%FW_DIR%\assets\*.onnx" "%INTERNAL_DIR%\faster_whisper\assets\" /E /I /Y >nul
 
+REM Always copy CUDA DLLs from ctranslate2 package first — these are the exact
+REM versions ctranslate2 was compiled against and what the EXE needs at runtime.
+for /f "delims=" %%p in ('python -c "import ctranslate2, os; print(os.path.dirname(ctranslate2.__file__))" 2^>nul') do (
+    set "CT2_DIR=%%p"
+)
+if defined CT2_DIR (
+    echo Copying CUDA DLLs from ctranslate2 package: %CT2_DIR%
+    copy "%CT2_DIR%\*.dll" "%INTERNAL_DIR%\" >nul 2>nul
+    echo ctranslate2 DLLs copied to %INTERNAL_DIR%
+) else (
+    echo WARNING: ctranslate2 package not found. CUDA may not work at runtime.
+)
+
 if defined CUDA_PATH (
     set "CUDA_BIN=%CUDA_PATH%\bin"
-    if exist "%CUDA_BIN%\cublas64*.dll" copy "%CUDA_BIN%\cublas64*.dll" "%INTERNAL_DIR%\" >nul
     if exist "%CUDA_BIN%\cudart64*.dll" copy "%CUDA_BIN%\cudart64*.dll" "%INTERNAL_DIR%\" >nul
     if exist "%CUDA_BIN%\cudnn64*.dll" copy "%CUDA_BIN%\cudnn64*.dll" "%INTERNAL_DIR%\" >nul 2>nul
-    echo CUDA DLLs copied to %INTERNAL_DIR%
+    echo System CUDA DLLs copied from %CUDA_BIN%
 ) else (
-    echo WARNING: CUDA_PATH not set. Executable will run in CPU mode only.
-    echo To enable GPU, install CUDA Toolkit or set CUDA_PATH environment variable.
+    echo NOTE: System CUDA not found - relying on ctranslate2 bundled DLLs only.
 )
 
 echo.

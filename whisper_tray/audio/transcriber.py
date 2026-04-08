@@ -195,6 +195,9 @@ class Transcriber:
 
         # Determine language parameter
         language_param = language if language != "auto" else None
+        logger.info(
+            f"Transcription language config: {language} -> param: {language_param}"
+        )
 
         try:
             # Check if VAD ONNX file exists

@@ -16,7 +16,9 @@
       "Bash(rm *)",
       "Bash(chmod *)",
       "Bash(pre-commit *)",
-      "Bash(detect-secrets *)"
+      "Bash(detect-secrets *)",
+      "Bash(sleep *)",
+      "Bash(cat *)"
     ]
   },
   "$version": 3
