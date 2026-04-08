@@ -37,6 +37,7 @@ class HotkeyListener:
         self._on_release_callback = on_release
         self._current_keys: Set[str] = set()
         self._listener: Optional[keyboard.Listener] = None
+        self._is_held: bool = False  # Track if hotkey is currently held down
 
     @staticmethod
     def _get_key_name(key: keyboard.Key | keyboard.KeyCode) -> str:
@@ -78,7 +79,9 @@ class HotkeyListener:
         self._current_keys.add(key_name)
 
         # Check if hotkey combination is pressed
-        if self.hotkey.issubset(self._current_keys):
+        # Only trigger when the combination is first completed, not on every key repeat
+        if self.hotkey.issubset(self._current_keys) and not self._is_held:
+            self._is_held = True
             logger.info("Hotkey activated")
             if self._on_press_callback:
                 self._on_press_callback()
@@ -92,6 +95,7 @@ class HotkeyListener:
         self._current_keys.discard(key_name)
 
         if was_held and not self.hotkey.issubset(self._current_keys):
+            self._is_held = False
             logger.info("Hotkey deactivated")
             if self._on_release_callback:
                 self._on_release_callback()
