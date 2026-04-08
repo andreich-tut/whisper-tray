@@ -49,6 +49,15 @@ class AudioRecorder:
             except queue.Empty:
                 break
 
+        # Stop any existing stream first to free resources
+        if self._current_stream is not None:
+            try:
+                self._current_stream.stop()
+                self._current_stream.close()
+            except Exception:
+                logger.debug("Failed to close existing stream")
+            self._current_stream = None
+
         # Start stream
         try:
             self._current_stream = sd.InputStream(
@@ -59,6 +68,17 @@ class AudioRecorder:
             )
             self._current_stream.start()
             logger.info("Audio recording stream started successfully")
+        except sd.PortAudioError as e:
+            logger.error(f"Failed to start audio recording: {e}")
+            # Provide user-friendly guidance for memory errors
+            if "memory" in str(e).lower():
+                logger.error(
+                    "Insufficient memory for audio recording. "
+                    "Try: (1) Closing other applications, "
+                    "(2) Using CPU instead of CUDA (set DEVICE=cpu), "
+                    "or (3) Using a smaller model (set MODEL_SIZE=base)"
+                )
+            raise
         except Exception as e:
             logger.error(f"Failed to start audio recording: {e}")
             raise

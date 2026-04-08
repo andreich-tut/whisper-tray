@@ -42,3 +42,14 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
+
+  # Build validation
+  - repo: local
+    hooks:
+      - id: validate-build
+        name: Validate Build
+        entry: python scripts/validate-build.py
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true

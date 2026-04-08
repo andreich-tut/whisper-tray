@@ -61,11 +61,11 @@ class TrayIcon:
             PIL Image with appropriate icon
         """
         if is_recording:
-            return TrayIcon.create_icon_image("red")
+            return TrayIcon.create_icon_image("tomato")
         elif not model_ready:
             return TrayIcon.create_icon_image("yellow")
         else:
-            return TrayIcon.create_icon_image("gray")
+            return TrayIcon.create_icon_image("lightgreen")
 
     def update_icon(
         self, icon: pystray.Icon, is_recording: bool, model_ready: bool

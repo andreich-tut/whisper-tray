@@ -6,6 +6,7 @@ Use `python -m whisper_tray` or `whisper-tray` command instead.
 
 This file is kept for backward compatibility only.
 """
+
 # pylint: disable=wrong-import-position
 import warnings
 

@@ -76,21 +76,23 @@ class HotkeyListener:
         """Handle key press events."""
         key_name = self._get_key_name(key)
         self._current_keys.add(key_name)
-        logger.info(f"Key pressed: {key_name}, current_keys: {self._current_keys}")
 
         # Check if hotkey combination is pressed
         if self.hotkey.issubset(self._current_keys):
-            logger.info("Hotkey combination detected!")
+            logger.info("Hotkey activated")
             if self._on_press_callback:
                 self._on_press_callback()
 
     def _on_release(self, key: keyboard.Key | keyboard.KeyCode) -> None:
         """Handle key release events."""
         key_name = self._get_key_name(key)
-        self._current_keys.discard(key_name)
 
         # Check if hotkey combination is broken
-        if not self.hotkey.issubset(self._current_keys):
+        was_held = self.hotkey.issubset(self._current_keys)
+        self._current_keys.discard(key_name)
+
+        if was_held and not self.hotkey.issubset(self._current_keys):
+            logger.info("Hotkey deactivated")
             if self._on_release_callback:
                 self._on_release_callback()
 

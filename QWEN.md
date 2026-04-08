@@ -103,6 +103,7 @@ whisper-tray/
 | **mypy** | Type checking | `mypy whisper_tray/` |
 | **bandit** | Security scanning | `bandit -r whisper_tray/` |
 | **pytest** | Testing | `pytest` |
+| **validate-build** | Build validation | `python scripts/validate-build.py` |
 | **pre-commit** | Git hooks | `pre-commit run --all-files` |
 
 ### Setup Commands

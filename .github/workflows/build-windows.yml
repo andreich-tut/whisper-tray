@@ -33,7 +33,7 @@ jobs:
 
       - name: Verify ONNX file exists
         run: |
-          python -c "import faster_whisper, os; fw=os.path.dirname(faster_whisper.__file__); onnx=os.path.join(fw,'assets','silero_vad_v6.onnx'); print(f'ONNX path: {onnx}'); assert os.path.exists(onnx), 'ONNX file not found!'; print('✓ ONNX file found')"
+          python -c "import faster_whisper, os; fw=os.path.dirname(faster_whisper.__file__); onnx=os.path.join(fw,'assets','silero_vad_v6.onnx'); print(f'ONNX path: {onnx}'); assert os.path.exists(onnx), 'ONNX file not found!'; print('OK: ONNX file found')"
 
       - name: Build with PyInstaller
         run: |
@@ -50,7 +50,7 @@ jobs:
             Write-Error "WhisperTray.exe not found!"
             exit 1
           }
-          Write-Host "✓ WhisperTray.exe created successfully"
+          Write-Host "OK: WhisperTray.exe created successfully"
           Get-ChildItem "dist\WhisperTray" -Recurse | Select-Object FullName, Length
 
       - name: Copy ONNX files explicitly (safety check)
@@ -61,13 +61,13 @@ jobs:
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
           }
           Copy-Item "$fw\assets\*.onnx" $dest -Force
-          Write-Host "✓ ONNX files copied to $dest"
+          Write-Host "OK: ONNX files copied to $dest"
           Get-ChildItem $dest
 
       - name: Create release archive
         run: |
           Compress-Archive -Path "dist\WhisperTray\*" -DestinationPath "WhisperTray-Windows.zip" -Force
-          Write-Host "✓ Archive created: WhisperTray-Windows.zip"
+          Write-Host "OK: Archive created: WhisperTray-Windows.zip"
           $size = (Get-Item "WhisperTray-Windows.zip").Length / 1MB
           Write-Host "  Size: $([math]::Round($size, 2)) MB"
 
@@ -103,12 +103,12 @@ jobs:
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
           }
           Copy-Item "$fw\assets\*.onnx" $dest -Force
-          Write-Host "✓ ONNX files copied to Debug build"
+          Write-Host "OK: ONNX files copied to Debug build"
 
       - name: Create Debug archive
         run: |
           Compress-Archive -Path "dist\WhisperTray_DEBUG\*" -DestinationPath "WhisperTray-Windows-DEBUG.zip" -Force
-          Write-Host "✓ Debug archive created"
+          Write-Host "OK: Debug archive created"
 
       - name: Upload Debug artifact
         uses: actions/upload-artifact@v4

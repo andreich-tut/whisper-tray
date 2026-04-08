@@ -61,10 +61,23 @@ class WhisperTrayApp:
             logger.info("Model not ready, ignoring hotkey")
             return
 
-        self._is_recording = True
-        self._recorder.start_recording()
-        logger.info("Recording started...")
-        self._update_tray_icon()
+        try:
+            self._is_recording = True
+            self._recorder.start_recording()
+            logger.info("Recording started...")
+            self._update_tray_icon()
+        except Exception as e:
+            logger.error(f"Failed to start recording on hotkey press: {e}")
+            self._is_recording = False
+            # Notify user via tray if possible
+            if self._tray_icon_ref:
+                try:
+                    self._tray_icon_ref.notify(
+                        "Recording failed: insufficient memory. "
+                        "Try closing apps or using DEVICE=cpu"
+                    )
+                except Exception:
+                    logger.debug("Failed to send tray notification")
 
     def _on_hotkey_released(self) -> None:
         """Handle hotkey release event."""

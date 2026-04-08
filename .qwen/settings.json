@@ -13,7 +13,10 @@
       "Bash(true)",
       "Bash(mypy *)",
       "Bash(bandit *)",
-      "Bash(rm *)"
+      "Bash(rm *)",
+      "Bash(chmod *)",
+      "Bash(pre-commit *)",
+      "Bash(detect-secrets *)"
     ]
   },
   "$version": 3

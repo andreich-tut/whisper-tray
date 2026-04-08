@@ -121,9 +121,16 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for:
 
 ## Troubleshooting
 
+**"Not enough memory" or "Unanticipated host error" (MME error 7)**
+- Close memory-intensive applications
+- Switch to CPU mode: set `DEVICE=cpu` in `.env` file
+- Use a smaller model: `MODEL_SIZE=base` or `small`
+- Restart the application after making changes
+
 **"CUDA out of memory"**
 - Use a smaller model: `MODEL_SIZE=base` or `small`
 - Close other GPU-intensive applications
+- Switch to CPU mode: set `DEVICE=cpu` in `.env` file
 
 **Hotkey not working**
 - Run application as Administrator
