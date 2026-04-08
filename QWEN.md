@@ -22,17 +22,38 @@
 
 ```
 whisper-tray/
-├── core.md              # Project specification and requirements
-├── QWEN.md              # This file - AI assistant context
-├── .claude/             # Claude IDE settings
-├── prompts/             # (Empty) Reserved for prompt templates
-└── whisper_tray/        # (To be created) Main application code
-    ├── whisper_tray.py  # Single-file application
-    ├── requirements.txt # Python dependencies
-    └── README.md        # Setup and usage instructions
+├── README.md                         # Primary user-facing documentation
+├── QWEN.md                           # This file - AI assistant context
+├── pyproject.toml                    # Project configuration
+├── .claude/                          # Claude IDE settings
+├── .github/workflows/                # CI/CD pipelines
+│   └── build-windows.yml             # Windows EXE build workflow
+├── prompts/                          # (Empty) Reserved for prompt templates
+├── whisper_tray/                     # Main application package
+│   ├── __init__.py
+│   ├── __main__.py                   # python -m whisper_tray entry point
+│   ├── app.py                        # Main application orchestrator
+│   ├── cli.py                        # CLI entry point
+│   ├── config.py                     # Configuration management
+│   ├── clipboard.py                  # Clipboard and paste operations
+│   ├── audio/
+│   │   ├── recorder.py               # Audio recording (sounddevice)
+│   │   └── transcriber.py            # Whisper model + transcription
+│   ├── input/
+│   │   └── hotkey.py                 # Hotkey detection (pynput)
+│   └── tray/
+│       ├── icon.py                   # Tray icon management (pystray)
+│       └── menu.py                   # Context menu handlers
+├── tests/                            # Test suite
+├── build/                            # Build scripts and specs
+│   ├── windows/
+│   └── scripts/
+└── docs/
+    ├── DEPLOYMENT.md                 # Build and deployment guide
+    └── CONTRIBUTING.md               # Developer documentation
 ```
 
-## Configuration (Hardcoded in core.md)
+## Configuration (Defined in `whisper_tray/config.py`)
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -65,10 +86,12 @@ whisper-tray/
 
 ## Development Conventions
 
-- **Single-file application**: All logic in `whisper_tray.py`
+- **Modular architecture**: Logic separated into domain-specific modules
+- **Configuration**: Type-safe dataclasses in `config.py`
 - **Pinned dependencies**: `requirements.txt` with exact versions
 - **No placeholders**: Write complete, working code
 - **Graceful degradation**: Handle errors without crashing
+- **Testable design**: Each module can be tested independently
 
 ### Code Quality Tools
 
@@ -93,12 +116,10 @@ pre-commit install
 pip install -e ".[dev]"
 
 # Run all quality checks
-black whisper_tray/ && isort whisper_tray/ && flake8 whisper_tray/ && mypy whisper_tray/ && bandit -r whisper_tray/
+black whisper_tray/ tests/ && isort whisper_tray/ tests/ && flake8 whisper_tray/ tests/ && mypy whisper_tray/ && bandit -r whisper_tray/
 ```
 
 ## Building and Running
-
-*(To be implemented - placeholder based on spec)*
 
 ```bash
 # Create virtual environment
@@ -106,10 +127,12 @@ python -m venv venv
 venv\Scripts\activate  # Windows
 
 # Install dependencies
-pip install -r whisper_tray/requirements.txt
+pip install -e ".[dev]"
 
 # Run the application
-python whisper_tray/whisper_tray.py
+whisper-tray
+# Or
+python -m whisper_tray
 ```
 
 ### CUDA Requirements
@@ -119,5 +142,7 @@ python whisper_tray/whisper_tray.py
 
 ## Related Files
 
-- `core.md`: Authoritative specification document - always reference this for requirements
+- `README.md`: Primary user-facing documentation
+- `docs/DEPLOYMENT.md`: Build and deployment instructions
+- `docs/CONTRIBUTING.md`: Developer documentation
 - `.claude/settings.json`: IDE-specific permissions configuration

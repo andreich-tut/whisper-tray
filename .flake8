@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 88
+max-complexity = 18
+extend-ignore = E203,W503
+exclude =
+    venv,
+    .venv,
+    build,
+    dist,
+    __pycache__,
+    *.egg-info,
+per-file-ignores =
+    tests/*:S101
+    whisper_tray/whisper_tray.py:E402

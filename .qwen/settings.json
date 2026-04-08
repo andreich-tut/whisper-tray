@@ -8,7 +8,12 @@
       "Bash(black *)",
       "Bash(pip install *)",
       "Bash(isort *)",
-      "Bash(flake8 *)"
+      "Bash(flake8 *)",
+      "Bash(mv *)",
+      "Bash(true)",
+      "Bash(mypy *)",
+      "Bash(bandit *)",
+      "Bash(rm *)"
     ]
   },
   "$version": 3

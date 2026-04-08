@@ -12,115 +12,31 @@ A Windows system tray application that provides global speech-to-text functional
 - 🚀 **GPU Accelerated** - CUDA support for fast transcription with faster-whisper
 - 📦 **Standalone EXE** - Can be built as a portable executable (no Python required)
 
-> 📖 **Windows User?** See [DEPLOYMENT.md](DEPLOYMENT.md) for easy .exe building instructions.
+## Quick Start
 
-## Requirements
+### Option 1: Download Pre-built EXE (Recommended)
 
-### Hardware
+1. Go to **Releases** page and download the latest `WhisperTray-Windows.zip`
+2. Extract and run `WhisperTray.exe`
+3. No Python installation required!
 
-- **GPU**: NVIDIA GPU with CUDA support (4GB+ VRAM recommended for large-v3 model)
-- **RAM**: 8GB+ system RAM
-- **Microphone**: Any working microphone
-
-### Software
-- **OS**: Windows 10/11
-- **Python**: 3.10, 3.11, or 3.12
-- **CUDA Toolkit**: 11.8 or 12.x (matching your GPU drivers)
-- **cuDNN**: Compatible with your CUDA version
-
-## Installation
-
-### Option A: Local Mode (faster-whisper)
-
-#### 1. Install CUDA (if not already installed)
-
-1. Download CUDA Toolkit from [NVIDIA](https://developer.nvidia.com/cuda-toolkit)
-2. Download cuDNN from [NVIDIA](https://developer.nvidia.com/cudnn) (requires account)
-3. Follow NVIDIA's installation instructions
-4. Verify installation:
-   ```bash
-   nvcc --version
-   ```
-
-#### 2. Set Up Python Environment
+### Option 2: Run from Source
 
 ```bash
-# Create virtual environment
+# Clone the repository
+git clone <your-repo-url>
+cd whisper-tray
+
+# Create and activate virtual environment
 python -m venv venv
+venv\Scripts\activate  # Windows
 
-# Activate virtual environment
-venv\Scripts\activate
-
-# Upgrade pip
-python -m pip install --upgrade pip
-```
-
-#### 3. Install Dependencies
-
-```bash
-# Install with CUDA support
+# Install and run
 pip install -e ".[dev]"
+whisper-tray
 ```
-
-> **Note**: If you encounter CUDA issues, try installing PyTorch with CUDA first:
-> ```bash
-> pip install torch --index-url https://download.pytorch.org/whl/cu118
-> ```
-
-### Install Pre-commit Hooks (Optional but Recommended)
-
-```bash
-pre-commit install
-```
-
-## Building Windows Executable (.exe)
-
-To create a standalone executable that doesn't require Python:
-
-### Quick Build (on Windows)
-
-1. **Copy** the `whisper-tray` folder to your Windows computer
-2. **Open** the `whisper_tray` subfolder
-3. **Double-click** `build.bat`
-4. **Wait** for the build to complete
-5. **Find** `WhisperTray.exe` in the `dist\` folder
-
-### What This Does
-
-- Installs all required dependencies
-- Builds a standalone `.exe` file (~50-100MB)
-- Creates output in `dist/WhisperTray.exe`
-- No Python required on the target machine
-
-### Configuration (Optional)
-
-Create a `.env` file next to `WhisperTray.exe`:
-
-```env
-# Local mode settings
-MODEL_SIZE=large-v3
-DEVICE=cuda
-COMPUTE_TYPE=float16
-```
-
-For detailed build instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Usage
-
-### Running the Application
-
-```bash
-# Activate virtual environment if not already active
-venv\Scripts\activate
-
-# Run WhisperTray
-whisper-tray
-
-# Or run directly
-python -m whisper_tray.whisper_tray
-```
-
-### Basic Operation
 
 1. **Start** the application - wait for "Ready" status in tray tooltip
 2. **Hold** `Ctrl+Shift+Space` to begin recording (icon turns red)
@@ -128,12 +44,12 @@ python -m whisper_tray.whisper_tray
 4. **Release** the hotkey to transcribe
 5. Text is automatically copied to clipboard and pasted
 
-### Tray Menu Options
+### Tray Menu
 
 | Option | Description |
 |--------|-------------|
 | **Language** | Set transcription language: English, Russian, or Auto-Detect |
-| **Toggle auto-paste** | Enable/disable automatic pasting after transcription |
+| **Toggle auto-paste** | Enable/disable automatic pasting |
 | **Exit** | Close the application |
 
 ### Icon Colors
@@ -146,15 +62,14 @@ python -m whisper_tray.whisper_tray
 
 ## Configuration
 
-### Using Environment Variables (Recommended)
+Create a `.env` file in the project root (or next to `WhisperTray.exe`):
 
-Create a `.env` file in the project root (copy from `.env.example`):
-
-```bash
-# Local model settings
-MODEL_SIZE=large-v3
-DEVICE=cuda
-COMPUTE_TYPE=float16
+```env
+# Model settings
+MODEL_SIZE=large-v3     # Options: tiny, base, small, medium, large-v3
+DEVICE=cuda             # Options: cuda, cpu
+COMPUTE_TYPE=float16    # Options: float16, int8, int8_float16
+LANGUAGE=en             # Options: en, ru, or omit for auto-detect
 
 # Hotkey settings
 HOTKEY=ctrl,shift,space
@@ -162,25 +77,6 @@ HOTKEY=ctrl,shift,space
 # Behavior settings
 AUTO_PASTE=true
 PASTE_DELAY=0.1
-```
-
-### Editing Source Code (Alternative)
-
-Edit `whisper_tray/whisper_tray.py` to customize settings:
-
-```python
-# Model settings
-MODEL_SIZE = "large-v3"      # Options: tiny, base, small, medium, large-v3
-DEVICE = "cuda"              # Options: cuda, cpu
-COMPUTE_TYPE = "float16"     # Options: float16, int8, int8_float16
-LANGUAGE = None              # None = auto-detect, or "en", "es", "fr", etc.
-
-# Hotkey settings
-HOTKEY = {Key.ctrl, Key.shift, Key.space}  # Custom hotkey combination
-
-# Behavior settings
-AUTO_PASTE = True            # Auto-paste transcription after copying
-PASTE_DELAY = 0.1            # Seconds to wait before pasting
 ```
 
 ### Model Size Recommendations
@@ -193,144 +89,61 @@ PASTE_DELAY = 0.1            # Seconds to wait before pasting
 | `medium` | ~5GB | Slow | High |
 | `large-v3` | ~10GB | Slowest | Best |
 
+## Requirements
+
+### Hardware
+
+- **GPU**: NVIDIA GPU with CUDA support (4GB+ VRAM recommended for large-v3)
+- **RAM**: 8GB+ system RAM
+- **Microphone**: Any working microphone
+
+### Software
+
+- **OS**: Windows 10/11
+- **Python**: 3.10, 3.11, or 3.12 (for source mode)
+- **CUDA Toolkit**: 11.8 or 12.x (optional, for GPU acceleration)
+
+## Building Windows Executable
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for complete build instructions, including:
+- Building on Windows locally
+- Building on Linux via GitHub Actions
+- CUDA bundling options
+- Troubleshooting
+
 ## Development
 
-### Code Quality
-
-```bash
-# Format code
-black whisper_tray/
-isort whisper_tray/
-
-# Lint
-flake8 whisper_tray/
-
-# Type check
-mypy whisper_tray/
-
-# Security scan
-bandit -r whisper_tray/
-
-# Run tests
-pytest
-```
-
-### Pre-commit Hooks
-
-The project uses pre-commit hooks to ensure code quality:
-
-```bash
-# Run all hooks manually
-pre-commit run --all-files
-```
-
-### Building from Source
-
-```bash
-# Install build tools
-pip install build
-
-# Build distribution
-python -m build
-
-# Install local build
-pip install dist/*.whl
-```
-
-### Building Windows Executable (.exe)
-
-To create a standalone Windows executable that doesn't require Python:
-
-#### 1. Install Build Dependencies
-
-```bash
-# Install pyinstaller and build dependencies
-pip install -e ".[build]"
-```
-
-#### 2. Build the Executable
-
-```bash
-# Run the build script
-python build_exe.py
-```
-
-This will create `dist/WhisperTray.exe` - a standalone executable that includes:
-- All Python dependencies
-- The application code
-- Everything needed to run on Windows (no Python installation required)
-
-#### 3. Distribute and Run
-
-```bash
-# Copy the executable to your desired location
-# The .exe file is ~50-100MB (includes all dependencies)
-
-# Optional: Create a .env file next to the .exe for configuration
-# Copy .env.example to .env and adjust settings
-```
-
-#### Build Options
-
-**Model Size Considerations:**
-```bash
-# Default build - user downloads model on first run
-# Model size: ~3GB for large-v3
-```
-
-#### Troubleshooting Builds
-
-**"Module not found" errors:**
-- Ensure all dependencies are installed: `pip install -e ".[build]"`
-- Check the hiddenimports in `whisper_tray/whisper_tray.spec`
-
-**Build succeeds but .exe doesn't run:**
-- Run with `--console` flag to see errors (edit .spec file: `console=True`)
-- Check Windows Defender - it may block unsigned executables
-- Ensure Visual C++ Redistributable is installed on target machine
-
-**Large .exe file:**
-- This is normal - it includes Python and all dependencies
-- Use UPX compression (enabled by default) to reduce size
-- Consider using `--onefile` mode (already enabled in spec)
+See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for:
+- Project architecture overview
+- Setting up development environment
+- Running tests and quality checks
+- Code style guidelines
 
 ## Troubleshooting
 
-### Common Issues
-
 **"CUDA out of memory"**
-- Use a smaller model: `MODEL_SIZE = "base"` or `"small"`
+- Use a smaller model: `MODEL_SIZE=base` or `small`
 - Close other GPU-intensive applications
-
-**"No module named 'sounddevice'"**
-- Run: `pip install -e ".[dev]"`
-- Ensure virtual environment is activated
-
-**Transcription is slow**
-- Ensure CUDA is properly installed
-- Check GPU utilization in Task Manager
-- Try a smaller model size
 
 **Hotkey not working**
 - Run application as Administrator
 - Check if hotkey is used by another application
-- Change `HOTKEY` configuration
+- Change `HOTKEY` in `.env` file
 
-**Microphone not detected**
-- Check Windows sound settings
-- Ensure default recording device is set
-- Test microphone in Windows Sound Control Panel
+**Transcription is slow**
+- Ensure CUDA is properly installed (if using GPU mode)
+- Try a smaller model size
+- Check GPU utilization in Task Manager
 
-### Getting Help
+**No tray icon appears**
+- Click the `^` arrow in the system tray to show hidden icons
+- Check `whisper_tray.log` for error messages
 
-1. Check this README for troubleshooting steps
-2. Review error messages in the console output
-3. Check `whisper_tray.log` for detailed logs
-4. Verify CUDA installation with `nvcc --version`
+For more troubleshooting steps, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## License
 
-MIT License - See LICENSE file for details
+MIT License
 
 ## Acknowledgments
 
