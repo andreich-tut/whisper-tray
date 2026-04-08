@@ -4,9 +4,7 @@ WhisperTray - Global speech-to-text system tray application.
 Hold Ctrl+Space to record, release to transcribe.
 Transcription is copied to clipboard and auto-pasted.
 
-Supports two modes:
-- Local mode: Uses faster-whisper with local model download
-- LM Studio mode: Uses LM Studio API for transcription (no local model needed)
+Uses faster-whisper with local model for transcription.
 """
 
 from __future__ import annotations
@@ -25,7 +23,6 @@ from typing import Optional
 import numpy as np
 import pyperclip
 import pystray
-import requests
 import sounddevice as sd
 from faster_whisper import WhisperModel
 from PIL import Image, ImageDraw
@@ -141,17 +138,10 @@ ensure_faster_whisper_assets()
 # Configuration
 # =============================================================================
 
-# Transcription mode: "local" or "lmstudio"
-TRANSCRIPTION_MODE: str = os.getenv("WHISPERTRAY_MODE", "local")
-
 # Local mode settings
 MODEL_SIZE: str = "large-v3"
 DEVICE: str = os.getenv("DEVICE", "cuda")
 COMPUTE_TYPE: str = os.getenv("COMPUTE_TYPE", "float16")
-
-# LM Studio settings
-LM_STUDIO_URL: str = os.getenv("LM_STUDIO_URL", "http://localhost:1234")
-LM_STUDIO_MODEL: str = os.getenv("LM_STUDIO_MODEL", "")  # Auto-detect if empty
 
 # Hotkey and behavior settings
 HOTKEY: set[str] = {"ctrl", "space"}  # Simpler 2-key combo for better reliability
@@ -174,131 +164,6 @@ current_keys: set[str] = set()
 audio_queue: queue.Queue = queue.Queue()
 current_language: str = "auto"  # "en", "ru", or "auto"
 auto_paste_enabled: bool = AUTO_PASTE
-
-# LM Studio state
-lmstudio_available: bool = False
-lmstudio_model_name: str = ""
-
-
-# =============================================================================
-# LM Studio API Client
-# =============================================================================
-
-
-def check_lmstudio_availability() -> tuple[bool, str]:
-    """
-    Check if LM Studio server is available and get model info.
-
-    Returns:
-        Tuple of (is_available, model_name_or_error)
-    """
-    try:
-        # Try to connect to LM Studio
-        response = requests.get(
-            f"{LM_STUDIO_URL}/v1/models",
-            timeout=5,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        # Get the first available model
-        models = data.get("data", [])
-        if models:
-            model_name = models[0].get("id", "unknown")
-            logger.info(f"LM Studio available with model: {model_name}")
-            return True, model_name
-        else:
-            logger.warning("LM Studio responded but no models loaded")
-            return False, "No models loaded in LM Studio"
-    except requests.exceptions.ConnectionError:
-        logger.warning(f"LM Studio not reachable at {LM_STUDIO_URL}")
-        return False, f"Cannot connect to {LM_STUDIO_URL}"
-    except requests.exceptions.Timeout:
-        logger.warning("LM Studio request timed out")
-        return False, "Connection timeout"
-    except Exception as e:
-        logger.warning(f"LM Studio check failed: {e}")
-        return False, str(e)
-
-
-def transcribe_with_lmstudio(audio_data: np.ndarray) -> Optional[str]:
-    """
-    Transcribe audio using LM Studio API.
-
-    LM Studio supports audio transcription via OpenAI-compatible API.
-    We send the audio as a WAV file.
-
-    Args:
-        audio_data: Flat numpy array of audio samples (float32, 16kHz)
-
-    Returns:
-        Transcribed text or None if failed
-    """
-    global current_language
-
-    try:
-        # Convert audio to WAV format in memory
-        audio_int16 = (audio_data * 32767).astype(np.int16)
-
-        # Create WAV file in memory
-        wav_buffer = io.BytesIO()
-        import wave
-
-        with wave.open(wav_buffer, "wb") as wav_file:
-            wav_file.setnchannels(1)  # Mono
-            wav_file.setsampwidth(2)  # 16-bit
-            wav_file.setframerate(SAMPLE_RATE)
-            wav_file.writeframes(audio_int16.tobytes())
-
-        wav_buffer.seek(0)
-        wav_data = wav_buffer.read()
-
-        # Prepare the request to LM Studio using OpenAI-compatible API
-        # Use multipart/form-data with proper boundary
-        headers = {
-            "Authorization": "Bearer lm-studio",
-        }
-
-        # Build multipart form data manually for better control
-        boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-
-        # Build the form data
-        form_data = (
-            (
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="model"\r\n\r\n'
-                f"{LM_STUDIO_MODEL if LM_STUDIO_MODEL else '@auto'}\r\n"
-                f"--{boundary}\r\n"
-                f'Content-Disposition: form-data; name="file"; filename="audio.wav"\r\n'
-                f"Content-Type: audio/wav\r\n\r\n"
-            ).encode("utf-8")
-            + wav_data
-            + f"\r\n--{boundary}--\r\n".encode("utf-8")
-        )
-
-        headers["Content-Type"] = f"multipart/form-data; boundary={boundary}"
-
-        response = requests.post(
-            f"{LM_STUDIO_URL}/v1/audio/transcriptions",
-            headers=headers,
-            data=form_data,
-            timeout=60,
-        )
-        response.raise_for_status()
-
-        result = response.json()
-        text = result.get("text", "").strip()
-
-        if text:
-            logger.info(f"LM Studio transcription: {text}")
-            return text
-        else:
-            logger.warning("LM Studio returned empty transcription")
-            return None
-
-    except Exception as e:
-        logger.error(f"LM Studio transcription failed: {e}")
-        return None
 
 
 # =============================================================================
@@ -386,7 +251,7 @@ def stop_recording() -> np.ndarray:
 
 def transcribe_audio(audio_data: np.ndarray) -> Optional[str]:
     """
-    Transcribe audio data using the configured backend (local or LM Studio).
+    Transcribe audio data using faster-whisper.
 
     Args:
         audio_data: Flat numpy array of audio samples (float32, 16kHz)
@@ -394,7 +259,7 @@ def transcribe_audio(audio_data: np.ndarray) -> Optional[str]:
     Returns:
         Transcribed text or None if failed/too short
     """
-    global TRANSCRIPTION_MODE, model, model_device, model_ready, current_language, lmstudio_available
+    global model, model_device, model_ready, current_language
 
     # Check duration
     duration = len(audio_data) / SAMPLE_RATE
@@ -402,110 +267,103 @@ def transcribe_audio(audio_data: np.ndarray) -> Optional[str]:
         logger.info(f"Recording too short: {duration:.2f}s < {MIN_RECORDING_DURATION}s")
         return None
 
-    # Route to appropriate backend
-    if TRANSCRIPTION_MODE == "lmstudio":
-        if not lmstudio_available:
-            logger.error("LM Studio mode selected but LM Studio not available")
-            return None
-        return transcribe_with_lmstudio(audio_data)
-    else:
-        # Local mode
-        if model is None:
-            logger.info("Error: Model not loaded")
-            return None
+    if model is None:
+        logger.info("Error: Model not loaded")
+        return None
 
-        # Determine language parameter
-        language_param = None if current_language == "auto" else current_language
+    # Determine language parameter
+    language_param = None if current_language == "auto" else current_language
 
-        try:
-            # Check if VAD ONNX file exists
-            fw_spec = importlib.util.find_spec("faster_whisper")
-            vad_onnx_exists = False
-            if fw_spec and fw_spec.origin:
-                fw_dir = os.path.dirname(fw_spec.origin)
-                vad_onnx_path = os.path.join(fw_dir, "assets", "silero_vad_v6.onnx")
-                vad_onnx_exists = os.path.exists(vad_onnx_path)
+    try:
+        # Check if VAD ONNX file exists
+        fw_spec = importlib.util.find_spec("faster_whisper")
+        vad_onnx_exists = False
+        if fw_spec and fw_spec.origin:
+            fw_dir = os.path.dirname(fw_spec.origin)
+            vad_onnx_path = os.path.join(fw_dir, "assets", "silero_vad_v6.onnx")
+            vad_onnx_exists = os.path.exists(vad_onnx_path)
 
-            # Use VAD if available, otherwise fall back to no VAD
+        # Use VAD if available, otherwise fall back to no VAD
+        if vad_onnx_exists:
+            # Transcribe with VAD filter
+            segments, info = model.transcribe(
+                audio_data,
+                language=language_param,
+                vad_filter=True,
+                vad_parameters=dict(
+                    min_silence_duration_ms=VAD_SILENCE_DURATION_MS,
+                    threshold=VAD_THRESHOLD,
+                ),
+            )
+        else:
+            # Fallback: transcribe without VAD
+            logger.warning(
+                "VAD ONNX file not found, transcribing without VAD filter"
+            )
+            segments, info = model.transcribe(
+                audio_data,
+                language=language_param,
+                vad_filter=False,
+            )
+
+        # Collect all segments
+        text_parts = []
+        for segment in segments:
+            text_parts.append(segment.text)
+
+        result_text = " ".join(text_parts).strip()
+
+        if not result_text:
             if vad_onnx_exists:
-                # Transcribe with VAD filter
-                segments, info = model.transcribe(
-                    audio_data,
-                    language=language_param,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        min_silence_duration_ms=VAD_SILENCE_DURATION_MS,
-                        threshold=VAD_THRESHOLD,
-                    ),
-                )
+                logger.info("No speech detected (VAD filtered everything)")
             else:
-                # Fallback: transcribe without VAD
-                logger.warning(
-                    "VAD ONNX file not found, transcribing without VAD filter"
-                )
-                segments, info = model.transcribe(
-                    audio_data,
-                    language=language_param,
-                    vad_filter=False,
-                )
-
-            # Collect all segments
-            text_parts = []
-            for segment in segments:
-                text_parts.append(segment.text)
-
-            result_text = " ".join(text_parts).strip()
-
-            if not result_text:
-                if vad_onnx_exists:
-                    logger.info("No speech detected (VAD filtered everything)")
-                else:
-                    logger.info("No speech detected")
-                return None
-
-            logger.info(f"Transcription ({info.language}): {result_text}")
-            return result_text
-
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"Transcription error: {error_msg}")
-
-            # Detect CUDA DLL missing error
-            if "dll is not found" in error_msg or "cublas" in error_msg.lower():
-                logger.warning(
-                    "CUDA DLL missing! This executable was built without CUDA DLLs.\n"
-                    "Options:\n"
-                    "  1. Rebuild with updated .spec file (bundles CUDA DLLs automatically)\n"
-                    "  2. Set DEVICE=cpu in environment to force CPU mode\n"
-                    "  3. Install CUDA Toolkit and rebuild"
-                )
-                # Try to reload model with CPU
-                if model_device != "cpu":
-                    logger.info("Attempting to reload model with CPU...")
-                    try:
-                        model = WhisperModel(
-                            MODEL_SIZE, device="cpu", compute_type="int8"
-                        )
-                        model_device = "cpu"
-                        model_ready = True
-                        logger.info("Model reloaded with CPU mode. Retrying transcription...")
-                        # Retry transcription with CPU
-                        segments, info = model.transcribe(
-                            audio_data,
-                            language=language_param,
-                            vad_filter=False,
-                        )
-                        text_parts = []
-                        for segment in segments:
-                            text_parts.append(segment.text)
-                        result_text = " ".join(text_parts).strip()
-                        if result_text:
-                            logger.info(f"Transcription (CPU fallback): {result_text}")
-                            return result_text
-                    except Exception as retry_error:
-                        logger.error(f"CPU fallback also failed: {retry_error}")
-
+                logger.info("No speech detected")
             return None
+
+        logger.info(f"Transcription ({info.language}): {result_text}")
+        return result_text
+
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Transcription error: {error_msg}")
+
+        # Detect CUDA DLL missing error
+        if "dll is not found" in error_msg or "cublas" in error_msg.lower():
+            logger.warning(
+                "CUDA DLL missing! This executable was built without CUDA DLLs.\n"
+                "Options:\n"
+                "  1. Rebuild with updated .spec file (bundles CUDA DLLs automatically)\n"
+                "  2. Set DEVICE=cpu in environment to force CPU mode\n"
+                "  3. Install CUDA Toolkit and rebuild"
+            )
+            # Try to reload model with CPU
+            if model_device != "cpu":
+                logger.info("Attempting to reload model with CPU...")
+                try:
+                    language_param = None if current_language == "auto" else current_language
+                    model = WhisperModel(
+                        MODEL_SIZE, device="cpu", compute_type="int8"
+                    )
+                    model_device = "cpu"
+                    model_ready = True
+                    logger.info("Model reloaded with CPU mode. Retrying transcription...")
+                    # Retry transcription with CPU
+                    segments, info = model.transcribe(
+                        audio_data,
+                        language=language_param,
+                        vad_filter=False,
+                    )
+                    text_parts = []
+                    for segment in segments:
+                        text_parts.append(segment.text)
+                    result_text = " ".join(text_parts).strip()
+                    if result_text:
+                        logger.info(f"Transcription (CPU fallback): {result_text}")
+                        return result_text
+                except Exception as retry_error:
+                    logger.error(f"CPU fallback also failed: {retry_error}")
+
+        return None
 
 
 # =============================================================================
@@ -684,15 +542,13 @@ def create_icon_image(color: str, size: int = 64) -> Image.Image:
 
 
 def get_icon_image() -> Image.Image:
-    """Get current icon image based on state and mode."""
+    """Get current icon image based on state."""
     if is_recording:
         return create_icon_image("red")
     elif not model_ready:
         return create_icon_image("yellow")
-    elif TRANSCRIPTION_MODE == "lmstudio":
-        return create_icon_image("green")  # Green for LM Studio
     else:
-        return create_icon_image("gray")  # Gray for local mode
+        return create_icon_image("gray")
 
 
 def update_tray_icon() -> None:
@@ -751,43 +607,6 @@ def exit_app(icon: pystray.Icon, item: pystray.MenuItem | None = None) -> None:
     icon.stop()
 
 
-def toggle_transcription_mode(
-    icon: pystray.Icon, item: pystray.MenuItem | None = None
-) -> None:
-    """Toggle between local and LM Studio transcription modes."""
-    global TRANSCRIPTION_MODE, lmstudio_available, lmstudio_model_name, model_ready
-
-    if TRANSCRIPTION_MODE == "local":
-        # Switch to LM Studio mode
-        logger.info("Switching to LM Studio mode...")
-        lmstudio_available, lmstudio_model_name = check_lmstudio_availability()
-
-        if lmstudio_available:
-            TRANSCRIPTION_MODE = "lmstudio"
-            model_ready = True
-            icon.notify(f"Switched to LM Studio: {lmstudio_model_name}")
-            logger.info(f"Now using LM Studio: {lmstudio_model_name}")
-        else:
-            icon.notify(f"LM Studio not available: {lmstudio_model_name}")
-            logger.warning(f"Cannot switch to LM Studio: {lmstudio_model_name}")
-    else:
-        # Switch to local mode
-        logger.info("Switching to local mode...")
-        TRANSCRIPTION_MODE = "local"
-        model_ready = (
-            True  # Model should already be loaded if we were in LM Studio mode
-        )
-        icon.notify("Switched to local mode")
-        logger.info("Now using local Whisper model")
-
-    update_tray_icon()
-
-
-def get_mode_checked(mode: str) -> bool:
-    """Check if a transcription mode is currently selected."""
-    return TRANSCRIPTION_MODE == mode
-
-
 def create_menu() -> tuple:
     """Create tray icon context menu."""
     # Create language submenu items
@@ -809,22 +628,7 @@ def create_menu() -> tuple:
         ),
     )
 
-    # Create mode submenu items
-    mode_menu = pystray.Menu(
-        pystray.MenuItem(
-            "Local Whisper",
-            toggle_transcription_mode,
-            checked=lambda _: get_mode_checked("local"),
-        ),
-        pystray.MenuItem(
-            "LM Studio",
-            toggle_transcription_mode,
-            checked=lambda _: get_mode_checked("lmstudio"),
-        ),
-    )
-
     return (
-        pystray.MenuItem("Mode", mode_menu),
         pystray.MenuItem("Language", language_menu),
         pystray.MenuItem(
             "Toggle Auto-Paste",
@@ -841,8 +645,6 @@ def get_tooltip() -> str:
         return "Loading model..."
     elif is_recording:
         return "Recording..."
-    elif TRANSCRIPTION_MODE == "lmstudio":
-        return f"WhisperTray (LM Studio: {lmstudio_model_name}) - Ready"
     elif model_device == "cpu":
         return "WhisperTray (CPU mode) - Ready"
     else:
@@ -890,56 +692,29 @@ def load_model_in_background() -> None:
 
 def main() -> None:
     """Main entry point for WhisperTray application."""
-    global _keyboard_listener, TRANSCRIPTION_MODE, lmstudio_available, lmstudio_model_name, model_ready
+    global _keyboard_listener, model_ready
 
     logger.info("Starting WhisperTray...")
-    logger.info(f"Transcription mode: {TRANSCRIPTION_MODE}")
     logger.info(f"Hotkey: {'+'.join(sorted(HOTKEY))}")
     logger.info(f"Auto-paste: {AUTO_PASTE}")
 
-    # Initialize icon variables
-    icon_image = create_icon_image("yellow")
-    tooltip = "Loading..."
+    # Start model loading in background thread
+    threading.Thread(
+        target=load_model_in_background,
+        daemon=True,
+    ).start()
 
-    if TRANSCRIPTION_MODE == "lmstudio":
-        # LM Studio mode - no local model needed
-        logger.info(f"Checking LM Studio at {LM_STUDIO_URL}...")
-        lmstudio_available, lmstudio_model_name = check_lmstudio_availability()
+    # Wait for model to be ready
+    _model_load_complete.wait()
 
-        if lmstudio_available:
-            logger.info(f"LM Studio ready with model: {lmstudio_model_name}")
-            model_ready = True
-            tooltip = f"WhisperTray (LM Studio: {lmstudio_model_name}) - Ready"
-            icon_image = create_icon_image("green")
-        else:
-            logger.warning(f"LM Studio not available: {lmstudio_model_name}")
-            logger.info("Falling back to local mode...")
-            TRANSCRIPTION_MODE = "local"
-            model_ready = False
-            tooltip = "Loading local model..."
-            icon_image = create_icon_image("yellow")
+    # Create tray icon after model is loaded
+    icon_image = create_icon_image("gray" if model_ready else "yellow")
 
-    if TRANSCRIPTION_MODE == "local":
-        # Local mode - load Whisper model
-        logger.info("Loading local Whisper model...")
-
-        # Start model loading in background thread
-        threading.Thread(
-            target=load_model_in_background,
-            daemon=True,
-        ).start()
-
-        # Wait for model to be ready
-        _model_load_complete.wait()
-
-        # Create tray icon after model is loaded
-        icon_image = create_icon_image("gray" if model_ready else "yellow")
-
-        # Determine tooltip based on device
-        if model_device == "cpu":
-            tooltip = "WhisperTray (CPU mode) - Ready"
-        else:
-            tooltip = "WhisperTray (GPU mode) - Ready"
+    # Determine tooltip based on device
+    if model_device == "cpu":
+        tooltip = "WhisperTray (CPU mode) - Ready"
+    else:
+        tooltip = "WhisperTray (GPU mode) - Ready"
 
     # Create tray icon
     icon = pystray.Icon(

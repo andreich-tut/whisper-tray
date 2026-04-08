@@ -8,9 +8,8 @@ A Windows system tray application that provides global speech-to-text functional
 - 📋 **Auto-Clipboard** - Transcribed text automatically copied to clipboard
 - ⚡ **Auto-Paste** - Optional automatic paste into the focused text field
 - 🔊 **VAD Filter** - Built-in voice activity detection filters silence and background noise
-- 🎨 **Status Indicator** - System tray icon changes color (gray=idle, red=recording, green=LM Studio)
+- 🎨 **Status Indicator** - System tray icon changes color (gray=idle, red=recording)
 - 🚀 **GPU Accelerated** - CUDA support for fast transcription with faster-whisper
-- 🔌 **LM Studio Support** - Optional mode to use LM Studio API instead of local model (no download needed)
 - 📦 **Standalone EXE** - Can be built as a portable executable (no Python required)
 
 > 📖 **Windows User?** See [DEPLOYMENT.md](DEPLOYMENT.md) for easy .exe building instructions.
@@ -19,22 +18,15 @@ A Windows system tray application that provides global speech-to-text functional
 
 ### Hardware
 
-#### Local Mode (faster-whisper)
 - **GPU**: NVIDIA GPU with CUDA support (4GB+ VRAM recommended for large-v3 model)
 - **RAM**: 8GB+ system RAM
 - **Microphone**: Any working microphone
 
-#### LM Studio Mode
-- **RAM**: 4GB+ system RAM
-- **Microphone**: Any working microphone
-- **LM Studio**: Installed and running with a Whisper model loaded
-
 ### Software
 - **OS**: Windows 10/11
 - **Python**: 3.10, 3.11, or 3.12
-- **CUDA Toolkit**: 11.8 or 12.x (matching your GPU drivers) - *Local mode only*
-- **cuDNN**: Compatible with your CUDA version - *Local mode only*
-- **LM Studio**: v0.2.0+ - *LM Studio mode only*
+- **CUDA Toolkit**: 11.8 or 12.x (matching your GPU drivers)
+- **cuDNN**: Compatible with your CUDA version
 
 ## Installation
 
@@ -75,54 +67,6 @@ pip install -e ".[dev]"
 > pip install torch --index-url https://download.pytorch.org/whl/cu118
 > ```
 
-### Option B: LM Studio Mode (No Local Model Download)
-
-#### 1. Install LM Studio
-
-1. Download LM Studio from [https://lmstudio.ai](https://lmstudio.ai)
-2. Install and launch LM Studio
-
-#### 2. Download a Whisper Model in LM Studio
-
-1. Click the "Download" button (magnet icon)
-2. Search for a Whisper model (e.g., "whisper-large-v3")
-3. Download your preferred model size
-
-#### 3. Start the Local Server
-
-1. Go to the "Server" tab in LM Studio
-2. Select the downloaded Whisper model
-3. Click "Start Server"
-4. Note the server URL (default: `http://localhost:1234`)
-
-#### 4. Set Up Python Environment and Install
-
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-venv\Scripts\activate
-
-# Upgrade pip
-python -m pip install --upgrade pip
-
-# Install dependencies
-pip install -e ".[dev]"
-```
-
-#### 5. Configure for LM Studio Mode
-
-Create a `.env` file in the project root:
-
-```bash
-# Use LM Studio mode
-WHISPERTRAY_MODE=lmstudio
-
-# LM Studio server URL (adjust if needed)
-LM_STUDIO_URL=http://localhost:1234
-```
-
 ### Install Pre-commit Hooks (Optional but Recommended)
 
 ```bash
@@ -153,13 +97,10 @@ To create a standalone executable that doesn't require Python:
 Create a `.env` file next to `WhisperTray.exe`:
 
 ```env
-# For LM Studio mode (no model download needed)
-WHISPERTRAY_MODE=lmstudio
-LM_STUDIO_URL=http://localhost:1234
-
-# OR for local mode (downloads Whisper model)
-WHISPERTRAY_MODE=local
+# Local mode settings
 MODEL_SIZE=large-v3
+DEVICE=cuda
+COMPUTE_TYPE=float16
 ```
 
 For detailed build instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -191,7 +132,6 @@ python -m whisper_tray.whisper_tray
 
 | Option | Description |
 |--------|-------------|
-| **Mode** | Select transcription mode: Local Whisper or LM Studio |
 | **Language** | Set transcription language: English, Russian, or Auto-Detect |
 | **Toggle auto-paste** | Enable/disable automatic pasting after transcription |
 | **Exit** | Close the application |
@@ -200,9 +140,8 @@ python -m whisper_tray.whisper_tray
 
 | Color | Meaning |
 |-------|---------|
-| **Gray** | Idle (Local mode ready) |
+| **Gray** | Ready |
 | **Red** | Recording |
-| **Green** | LM Studio mode ready |
 | **Yellow** | Loading/Not ready |
 
 ## Configuration
@@ -212,14 +151,7 @@ python -m whisper_tray.whisper_tray
 Create a `.env` file in the project root (copy from `.env.example`):
 
 ```bash
-# Transcription mode: "local" or "lmstudio"
-WHISPERTRAY_MODE=local
-
-# LM Studio settings (only used when WHISPERTRAY_MODE=lmstudio)
-LM_STUDIO_URL=http://localhost:1234
-LM_STUDIO_MODEL=
-
-# Local model settings (only used when WHISPERTRAY_MODE=local)
+# Local model settings
 MODEL_SIZE=large-v3
 DEVICE=cuda
 COMPUTE_TYPE=float16
@@ -340,17 +272,10 @@ This will create `dist/WhisperTray.exe` - a standalone executable that includes:
 
 #### Build Options
 
-**For Local Mode (smaller .exe, downloads model on first run):**
+**Model Size Considerations:**
 ```bash
-# Default build - user can download model on first run
+# Default build - user downloads model on first run
 # Model size: ~3GB for large-v3
-```
-
-**For LM Studio Mode (no model download needed):**
-```bash
-# Create .env file next to WhisperTray.exe:
-WHISPERTRAY_MODE=lmstudio
-LM_STUDIO_URL=http://localhost:1234
 ```
 
 #### Troubleshooting Builds
@@ -373,8 +298,6 @@ LM_STUDIO_URL=http://localhost:1234
 
 ### Common Issues
 
-#### Local Mode Issues
-
 **"CUDA out of memory"**
 - Use a smaller model: `MODEL_SIZE = "base"` or `"small"`
 - Close other GPU-intensive applications
@@ -387,25 +310,6 @@ LM_STUDIO_URL=http://localhost:1234
 - Ensure CUDA is properly installed
 - Check GPU utilization in Task Manager
 - Try a smaller model size
-
-#### LM Studio Mode Issues
-
-**"LM Studio not available" or "Cannot connect"**
-- Ensure LM Studio is running
-- Check that the server is started in LM Studio (Server tab → Start Server)
-- Verify the URL in your `.env` file matches LM Studio's server URL
-- Check firewall settings - LM Studio server may be blocked
-
-**"No models loaded in LM Studio"**
-- Download a Whisper model in LM Studio first
-- Load the model in the Server tab before starting WhisperTray
-
-**Transcription fails or returns empty text**
-- Ensure you have a Whisper model loaded (not just an LLM)
-- Check LM Studio server logs for errors
-- Try a different Whisper model variant
-
-#### General Issues
 
 **Hotkey not working**
 - Run application as Administrator
@@ -422,8 +326,7 @@ LM_STUDIO_URL=http://localhost:1234
 1. Check this README for troubleshooting steps
 2. Review error messages in the console output
 3. Check `whisper_tray.log` for detailed logs
-4. Verify CUDA installation with `nvcc --version` (local mode)
-5. Check LM Studio server status (LM Studio mode)
+4. Verify CUDA installation with `nvcc --version`
 
 ## License
 
@@ -433,6 +336,5 @@ MIT License - See LICENSE file for details
 
 - [faster-whisper](https://github.com/guillaumekln/faster-whisper) - Optimized Whisper inference
 - [OpenAI Whisper](https://github.com/openai/whisper) - Speech recognition model
-- [LM Studio](https://lmstudio.ai) - Local LLM and Whisper model server
 - [pystray](https://github.com/moses-palmer/pystray) - System tray support
 - [pynput](https://github.com/moses-palmer/pynput) - Hotkey detection

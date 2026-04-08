@@ -60,7 +60,7 @@ If the automated scripts don't work, follow these steps:
 ### 1. Install Dependencies
 
 ```bash
-pip install faster-whisper sounddevice pynput pystray Pillow pyperclip requests python-dotenv pyinstaller
+pip install faster-whisper sounddevice pynput pystray Pillow pyperclip python-dotenv pyinstaller
 ```
 
 ### 2. Verify ONNX File Exists
@@ -155,7 +155,7 @@ WhisperTray.exe
 
 Run this to ensure all dependencies are installed:
 ```bash
-pip install --upgrade faster-whisper sounddevice pynput pystray Pillow pyperclip requests python-dotenv pyinstaller
+pip install --upgrade faster-whisper sounddevice pynput pystray Pillow pyperclip python-dotenv pyinstaller
 ```
 
 ### App Crashes on Startup
@@ -202,8 +202,7 @@ To share WhisperTray with others:
 
 **Note:** Recipients still need:
 - Windows 10/11
-- NVIDIA drivers + CUDA (for GPU mode)
-- Or they can use LM Studio mode (no GPU needed)
+- NVIDIA drivers + CUDA (for GPU mode, otherwise CPU fallback will be used)
 
 ## Build Configuration
 
@@ -212,20 +211,14 @@ To share WhisperTray with others:
 Create a `.env` file in the `whisper_tray` folder to customize the build:
 
 ```env
-# Transcription mode: local or lmstudio
-WHISPERTRAY_MODE=local
-
 # Device: cuda or cpu
 DEVICE=cuda
 
 # Compute type: float16, int8, etc.
 COMPUTE_TYPE=float16
 
-# LM Studio URL (if using LM Studio mode)
-LM_STUDIO_URL=http://localhost:1234
-
-# LM Studio model name (leave empty for auto-detect)
-LM_STUDIO_MODEL=
+# Model size: tiny, base, small, medium, large-v3
+MODEL_SIZE=large-v3
 ```
 
 ### Changing the Whisper Model
@@ -241,7 +234,7 @@ Smaller models = faster but less accurate.
 
 After building, verify everything works:
 
-1. ✅ Tray icon appears (yellow while loading, then gray/green)
+1. ✅ Tray icon appears (yellow while loading, then gray)
 2. ✅ Hold `Ctrl+Space` - icon turns red (recording)
 3. ✅ Release - transcription appears and auto-pastes
 4. ✅ Right-click menu works (Language, Auto-Paste, Exit)

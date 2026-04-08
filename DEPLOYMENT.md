@@ -38,7 +38,7 @@ python -m venv venv
 venv\Scripts\activate
 
 # Install dependencies
-pip install faster-whisper sounddevice pynput pystray Pillow pyperclip requests python-dotenv pyinstaller
+pip install faster-whisper sounddevice pynput pystray Pillow pyperclip python-dotenv pyinstaller
 
 # Build the executable
 pyinstaller --clean whisper_tray.spec
@@ -48,17 +48,10 @@ pyinstaller --clean whisper_tray.spec
 
 Create a `.env` file next to `WhisperTray.exe`:
 
-#### For LM Studio Mode (No Model Download)
 ```env
-WHISPERTRAY_MODE=lmstudio
-LM_STUDIO_URL=http://localhost:1234
-```
-
-#### For Local Mode (Downloads Whisper Model)
-```env
-WHISPERTRAY_MODE=local
 MODEL_SIZE=large-v3
 DEVICE=cuda
+COMPUTE_TYPE=float16
 ```
 
 ## Distribution
@@ -71,15 +64,9 @@ DEVICE=cuda
 
 ### System Requirements
 
-#### Local Mode
 - Windows 10/11 (64-bit)
 - 8GB+ RAM
-- NVIDIA GPU with 4GB+ VRAM
-
-#### LM Studio Mode
-- Windows 10/11 (64-bit)
-- 4GB+ RAM
-- LM Studio installed and running
+- NVIDIA GPU with 4GB+ VRAM (or CPU mode will be used as fallback)
 
 ## Troubleshooting
 
@@ -101,11 +88,6 @@ DEVICE=cuda
 - Make sure CUDA Toolkit is installed: https://developer.nvidia.com/cuda-downloads
 - Run `build_console.bat` or `build.bat` - CUDA DLLs will be copied to dist folder
 - If CUDA is not in default location, add CUDA_PATH/bin to system PATH
-
-**LM Studio mode doesn't work**
-- Ensure LM Studio is running
-- Start the server in LM Studio
-- Load a Whisper model
 
 **No tray icon appears**
 - Click the ^ arrow in the system tray to show hidden icons
