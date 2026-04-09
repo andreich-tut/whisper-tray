@@ -4,12 +4,14 @@
 # This file tells PyInstaller how to build the Windows executable
 
 import os
+from importlib.util import find_spec
 
 # Support environment variable overrides for CI builds
 # WHISPER_TRAY_DEBUG=1 builds with console and debug settings
 # WHISPER_TRAY_NAME sets the output name
 _is_debug = os.environ.get('WHISPER_TRAY_DEBUG', '0') == '1'
 _out_name = os.environ.get('WHISPER_TRAY_NAME', 'WhisperTray')
+_has_pyside6 = find_spec('PySide6') is not None
 
 block_cipher = None
 
@@ -23,8 +25,11 @@ whisper_tray_modules = [
     'whisper_tray.audio.recorder',
     'whisper_tray.audio.transcriber',
     'whisper_tray.input.hotkey',
+    'whisper_tray.overlay',
+    'whisper_tray.overlay.controller',
     'whisper_tray.tray.icon',
     'whisper_tray.tray.menu',
+    'whisper_tray.state',
 ]
 
 # Third-party modules that need explicit importing
@@ -40,6 +45,15 @@ third_party_imports = [
     'numpy',
     'dotenv',
 ]
+
+if _has_pyside6:
+    whisper_tray_modules.append('whisper_tray.overlay.pyside_overlay')
+    third_party_imports.extend([
+        'PySide6',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
+    ])
 
 hidden_imports = whisper_tray_modules + third_party_imports
 
@@ -71,7 +85,8 @@ exe = EXE(
     debug=_is_debug,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # Keep Windows builds uncompressed; UPX can trigger early DLL load failures.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=_is_debug,
@@ -87,7 +102,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name=_out_name,
 )

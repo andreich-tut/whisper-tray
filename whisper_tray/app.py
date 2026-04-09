@@ -13,19 +13,36 @@ import threading
 from typing import Optional
 
 import numpy as np
-import pystray
 
 from whisper_tray.audio.recorder import AudioRecorder
 from whisper_tray.audio.transcriber import Transcriber
 from whisper_tray.clipboard import ClipboardManager
 from whisper_tray.config import AppConfig
 from whisper_tray.input.hotkey import HotkeyListener
+from whisper_tray.overlay import NullOverlayController, OverlayController
+from whisper_tray.state import (
+    AppState,
+    AppStatePresentation,
+    AppStatePresenter,
+    AppStatePublisher,
+    AppStateSnapshot,
+    format_hotkey,
+)
 from whisper_tray.tray.icon import TrayIcon
 from whisper_tray.tray.menu import TrayMenu
+from whisper_tray.tray.runtime import (
+    PystrayTrayRuntime,
+    QtTrayRuntime,
+    TrayRuntime,
+    should_use_qt_tray,
+)
 from whisper_tray.types import TrayIcon as PystrayIcon
 from whisper_tray.types import TrayMenuItem as PystrayMenuItem
 
 logger = logging.getLogger(__name__)
+OVERLAY_INSTALL_MESSAGE = (
+    'Overlay unavailable. Install the UI extras with `pip install -e ".[ui]"`.'
+)
 
 
 class WhisperTrayApp:
@@ -49,11 +66,21 @@ class WhisperTrayApp:
             auto_paste=self.config.hotkey.auto_paste,
         )
         self._tray_icon = TrayIcon()
+        self._overlay: OverlayController = NullOverlayController()
 
         # State
-        self._is_recording = False
-        self._is_processing = False
         self._current_language: str = self.config.model.language or "auto"
+        self._processing_flash_on = False
+        self._state_presenter = self._build_state_presenter()
+        initial_snapshot = AppStateSnapshot(
+            state=AppState.LOADING_MODEL,
+            device=self._transcriber.device,
+        )
+        self._state_publisher = AppStatePublisher(initial_snapshot)
+        self._state_snapshot = initial_snapshot
+        self._state_presentation: AppStatePresentation = self._state_presenter.present(
+            initial_snapshot
+        )
 
         # Threading
         self._model_load_complete = threading.Event()
@@ -62,11 +89,14 @@ class WhisperTrayApp:
         self._tray_icon_ref: Optional[PystrayIcon] = None
         self._hotkey_listener: Optional[HotkeyListener] = None
         self._tray_update_lock = threading.Lock()
+        self._tray_runtime: TrayRuntime | None = None
 
         # Transcription work queue (single worker thread)
         self._transcription_queue: queue.Queue = queue.Queue()
         self._transcription_worker: Optional[threading.Thread] = None
         self._worker_stop = threading.Event()
+
+        self._state_publisher.subscribe(self._on_state_changed)
 
     def _transcription_worker_loop(self) -> None:
         """Background worker that processes transcription requests one at a time."""
@@ -77,16 +107,22 @@ class WhisperTrayApp:
                 continue
 
             audio_data, lang = item
+            next_state = AppState.READY
             try:
                 text = self._transcriber.transcribe(audio_data, lang)
                 if text:
                     logger.info(f"Recognized text: {text}")
-                    self._clipboard.copy_and_paste(text)
+                    paste_result = self._clipboard.copy_and_paste(text)
+                    if paste_result is not None and not paste_result.succeeded:
+                        self._notify_user(
+                            "Auto-paste failed. Text is still in the clipboard."
+                        )
             except Exception as e:
                 logger.error(f"Transcription worker error: {e}")
+                next_state = AppState.ERROR
             finally:
-                self._stop_flash_timer()
                 self._transcription_queue.task_done()
+                self._stop_flash_timer(next_state=next_state)
 
     def _start_worker(self) -> None:
         """Start the single transcription worker thread."""
@@ -101,6 +137,10 @@ class WhisperTrayApp:
     def _stop_worker(self) -> None:
         """Stop the transcription worker and drain queue."""
         self._worker_stop.set()
+        self._flash_event.set()
+        if self._flash_timer and self._flash_timer.is_alive():
+            self._flash_timer.join(timeout=1.0)
+        self._flash_timer = None
         # Drain pending work
         while not self._transcription_queue.empty():
             try:
@@ -111,33 +151,69 @@ class WhisperTrayApp:
         if self._transcription_worker:
             self._transcription_worker.join(timeout=2.0)
 
+    def _on_state_changed(self, snapshot: AppStateSnapshot) -> None:
+        """Cache and fan out the latest app state to UI components."""
+        self._state_snapshot = snapshot
+        self._state_presentation = self._state_presenter.present(snapshot)
+        self._overlay.show_state(self._state_presentation)
+        self._update_tray_icon()
+
+    def _build_state_presenter(self) -> AppStatePresenter:
+        """Create the shared presenter from the current runtime settings."""
+        return AppStatePresenter(
+            hotkey_label=format_hotkey(self.config.hotkey.hotkey),
+            ready_auto_hide_seconds=self.config.overlay.auto_hide_seconds,
+            overlay_density=self.config.overlay.density,
+        )
+
+    def _refresh_presentation_model(self) -> None:
+        """Rebuild the shared presenter and rerender the current UI state."""
+        self._state_presenter = self._build_state_presenter()
+        self._on_state_changed(self._state_snapshot)
+
+    def _publish_state(self, state: AppState, message: str | None = None) -> None:
+        """Publish a new shared app state."""
+        self._state_publisher.publish(
+            state,
+            device=self._transcriber.device,
+            message=message,
+        )
+
+    def _get_idle_state(self) -> AppState:
+        """Return the best non-recording state for the current app conditions."""
+        if self._transcription_queue.unfinished_tasks > 0:
+            return AppState.PROCESSING
+        if self._transcriber.is_ready:
+            return AppState.READY
+        if self._model_load_complete.is_set():
+            return AppState.ERROR
+        return AppState.LOADING_MODEL
+
     def _on_hotkey_pressed(self) -> None:
         """Handle hotkey press event."""
         if not self._transcriber.is_ready:
             logger.info("Model not ready, ignoring hotkey")
+            if self._model_load_complete.is_set():
+                self._publish_state(AppState.ERROR, message="Model failed to load.")
             return
 
         try:
-            self._is_recording = True
             self._recorder.start_recording()
             logger.info("Recording started...")
-            self._update_tray_icon()
+            self._publish_state(AppState.RECORDING)
         except Exception as e:
             logger.error(f"Failed to start recording on hotkey press: {e}")
-            self._is_recording = False
-            # Notify user via tray if possible
-            if self._tray_icon_ref:
-                try:
-                    self._tray_icon_ref.notify(
-                        "Recording failed: insufficient memory. "
-                        "Try closing apps or using DEVICE=cpu"
-                    )
-                except Exception:
-                    logger.debug("Failed to send tray notification")
+            self._publish_state(
+                AppState.ERROR,
+                message="Recording failed. Try closing apps or using DEVICE=cpu.",
+            )
+            self._notify_user(
+                "Recording failed: insufficient memory. "
+                "Try closing apps or using DEVICE=cpu"
+            )
 
     def _on_hotkey_released(self) -> None:
         """Handle hotkey release event."""
-        self._is_recording = False
         audio_data = self._recorder.stop_recording()
         logger.info(f"Recording stopped. Captured {len(audio_data)} samples.")
 
@@ -148,13 +224,13 @@ class WhisperTrayApp:
                 f"Ignoring short recording ({duration:.2f}s < "
                 f"{self.config.audio.min_recording_duration}s)"
             )
-            self._update_tray_icon()
+            self._publish_state(self._get_idle_state())
             return
 
         # Reject if queue already has pending work (avoid backlog)
-        if self._transcription_queue.qsize() >= 1:
+        if self._transcription_queue.unfinished_tasks >= 1:
             logger.info("Transcription busy, dropping this utterance")
-            self._update_tray_icon()
+            self._publish_state(self._get_idle_state())
             return
 
         # Start flash timer before transcription
@@ -162,9 +238,6 @@ class WhisperTrayApp:
 
         # Enqueue transcription request (non-blocking)
         self._transcription_queue.put((audio_data, self._current_language))
-
-        # Update tray icon
-        self._update_tray_icon()
 
     def _process_transcription(self, audio_data: np.ndarray) -> None:
         """
@@ -175,35 +248,35 @@ class WhisperTrayApp:
 
     def _start_flash_timer(self) -> None:
         """Start background thread that flashes the icon during processing."""
-        self._is_processing = True
+        self._processing_flash_on = True
         self._flash_event.clear()
+        self._publish_state(AppState.PROCESSING)
 
         def flash_loop() -> None:
             while not self._flash_event.is_set():
-                # Toggle between processing and idle icon
+                self._processing_flash_on = not self._processing_flash_on
                 self._update_tray_icon()
                 self._flash_event.wait(0.5)  # 500ms interval
 
-        self._flash_timer = threading.Thread(target=flash_loop, daemon=True)
+        self._flash_timer = threading.Thread(
+            target=flash_loop,
+            daemon=True,
+            name="tray-processing-flash",
+        )
         self._flash_timer.start()
 
-    def _stop_flash_timer(self) -> None:
+    def _stop_flash_timer(self, next_state: AppState | None = None) -> None:
         """Stop the flash timer."""
-        self._is_processing = False
         self._flash_event.set()
-        if self._flash_timer:
+        if self._flash_timer and self._flash_timer.is_alive():
             self._flash_timer.join(timeout=1.0)
-        # Update icon to final state after stopping flash
-        self._update_tray_icon()
+        self._flash_timer = None
+        self._processing_flash_on = False
+        self._publish_state(next_state or self._get_idle_state())
 
     def _get_tray_title(self) -> str:
         """Return the current tray hover text for the active app state."""
-        return self._tray_icon.get_tooltip(
-            is_recording=self._is_recording,
-            model_ready=self._transcriber.is_ready,
-            device=self._transcriber.device,
-            is_processing=self._is_processing,
-        )
+        return self._state_presentation.tray_title
 
     def _update_tray_icon(self) -> None:
         """Update the tray icon image and hover text for the current state."""
@@ -212,16 +285,88 @@ class WhisperTrayApp:
 
         with self._tray_update_lock:
             try:
-                self._tray_icon.update_icon(
+                self._tray_icon.update_icon_for_presentation(
                     self._tray_icon_ref,
-                    self._is_recording,
-                    self._transcriber.is_ready,
-                    self._is_processing,
+                    self._state_presentation,
+                    flash_on=self._processing_flash_on,
                 )
                 # pystray exposes the tray tooltip text via the `title` property.
                 self._tray_icon_ref.title = self._get_tray_title()
             except Exception:
                 logger.warning("Failed to update tray icon state", exc_info=True)
+
+    def _refresh_tray_menu(self, icon: PystrayIcon) -> None:
+        """Refresh dynamic tray menu checkmarks when pystray supports it."""
+        update_menu = getattr(icon, "update_menu", None)
+        if not callable(update_menu):
+            return
+
+        try:
+            update_menu()
+        except Exception:
+            logger.debug("Failed to refresh tray menu", exc_info=True)
+
+    def _notify_user(self, message: str) -> None:
+        """Show a best-effort tray notification without breaking the app flow."""
+        if not self._tray_icon_ref:
+            return
+
+        try:
+            self._tray_icon_ref.notify(message)
+        except Exception:
+            logger.debug("Failed to send tray notification", exc_info=True)
+
+    def _apply_overlay_settings(self, *, render_current_state: bool = True) -> bool:
+        """Recreate the overlay controller for the current runtime settings."""
+        self._overlay.close()
+        runtime = getattr(self, "_tray_runtime", None)
+        if runtime is None:
+            runtime = PystrayTrayRuntime()
+        self._overlay = runtime.create_overlay_controller(
+            self.config.overlay.enabled,
+            position=self.config.overlay.position,
+            screen_target=self.config.overlay.screen,
+        )
+
+        if self.config.overlay.enabled and isinstance(
+            self._overlay, NullOverlayController
+        ):
+            self.config.overlay.enabled = False
+            return False
+
+        if render_current_state and self.config.overlay.enabled:
+            self._overlay.show_state(self._state_presentation)
+
+        return self.config.overlay.enabled
+
+    @staticmethod
+    def _format_overlay_position(position: str) -> str:
+        """Convert an overlay corner into a readable tray label."""
+        return position.replace("-", " ").title()
+
+    @staticmethod
+    def _format_overlay_auto_hide(seconds: float) -> str:
+        """Convert a ready-state timeout into a readable tray label."""
+        if seconds <= 0:
+            return "Stay Visible"
+        if seconds.is_integer():
+            unit = "Second" if seconds == 1 else "Seconds"
+            return f"{int(seconds)} {unit}"
+        return f"{seconds:g} Seconds"
+
+    @staticmethod
+    def _format_overlay_density(density: str) -> str:
+        """Convert an overlay density into a readable tray label."""
+        return density.title()
+
+    @staticmethod
+    def _format_overlay_screen(screen: str) -> str:
+        """Convert an overlay screen target into a readable tray label."""
+        labels = {
+            "primary": "Primary Display",
+            "cursor": "Cursor Display",
+        }
+        return labels.get(screen, screen.replace("-", " ").title())
 
     def _setup_hotkey_listener(self) -> None:
         """Set up the global hotkey listener."""
@@ -230,6 +375,47 @@ class WhisperTrayApp:
             on_press=self._on_hotkey_pressed,
             on_release=self._on_hotkey_released,
         )
+
+    def _prepare_tray_runtime(self) -> None:
+        """
+        Prepare the preferred tray runtime with a safe Qt-to-pystray fallback.
+
+        When the shared Qt tray cannot boot, we keep the requested overlay
+        configuration intact so the legacy pystray runtime can still attempt the
+        threaded Qt overlay backend during `_apply_overlay_settings()`.
+        """
+        self._tray_runtime = self._create_tray_runtime()
+        try:
+            self._tray_runtime.prepare(self)
+        except Exception:
+            if not isinstance(self._tray_runtime, QtTrayRuntime):
+                raise
+
+            logger.warning(
+                "Qt tray runtime failed to start. Falling back to pystray "
+                "and preserving overlay settings so the legacy backend can "
+                "retry overlay startup.",
+                exc_info=True,
+            )
+            self._tray_runtime = PystrayTrayRuntime()
+            self._tray_runtime.prepare(self)
+
+    def _create_tray_runtime(self) -> TrayRuntime:
+        """Choose the best tray runtime for the current environment."""
+        tray_backend = self.config.ui.tray_backend
+
+        if tray_backend == "pystray":
+            return PystrayTrayRuntime()
+
+        if should_use_qt_tray():
+            return QtTrayRuntime()
+
+        if tray_backend == "qt":
+            logger.warning(
+                "TRAY_BACKEND=qt requested, but PySide6 is unavailable. "
+                "Falling back to pystray."
+            )
+        return PystrayTrayRuntime()
 
     def _setup_tray_menu(self) -> TrayMenu:
         """
@@ -243,30 +429,140 @@ class WhisperTrayApp:
             on_set_language_en=self._on_set_language_en,
             on_set_language_ru=self._on_set_language_ru,
             on_set_language_auto=self._on_set_language_auto,
+            on_toggle_overlay=self._on_toggle_overlay,
+            on_set_overlay_position=self._on_set_overlay_position,
+            on_set_overlay_screen=self._on_set_overlay_screen,
+            on_set_overlay_auto_hide=self._on_set_overlay_auto_hide,
+            on_set_overlay_density=self._on_set_overlay_density,
             on_exit=self._on_exit,
             get_auto_paste_state=lambda: self._clipboard.auto_paste,
             get_language_state=lambda: self._current_language,
+            get_overlay_enabled_state=lambda: self.config.overlay.enabled,
+            get_overlay_position_state=lambda: self.config.overlay.position,
+            get_overlay_screen_state=lambda: self.config.overlay.screen,
+            get_overlay_auto_hide_state=lambda: self.config.overlay.auto_hide_seconds,
+            get_overlay_density_state=lambda: self.config.overlay.density,
         )
 
     def _on_toggle_auto_paste(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle toggle auto-paste menu action."""
         new_state = self._clipboard.toggle_auto_paste()
-        icon.notify(f"Auto-paste {'enabled' if new_state else 'disabled'}")
+        self._notify_user(f"Auto-paste {'enabled' if new_state else 'disabled'}")
 
     def _on_set_language_en(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to English."""
         self._current_language = "en"
-        icon.notify("Language: English")
+        self._notify_user("Language: English")
 
     def _on_set_language_ru(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to Russian."""
         self._current_language = "ru"
-        icon.notify("Language: Russian")
+        self._notify_user("Language: Russian")
 
     def _on_set_language_auto(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to auto-detect."""
         self._current_language = "auto"
-        icon.notify("Language: Auto-detect")
+        self._notify_user("Language: Auto-detect")
+
+    def _on_toggle_overlay(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
+        """Handle toggling the optional on-screen overlay."""
+        requested_state = not self.config.overlay.enabled
+        self.config.overlay.enabled = requested_state
+        overlay_active = self._apply_overlay_settings()
+        self._refresh_tray_menu(icon)
+
+        if requested_state and overlay_active:
+            self._notify_user(
+                "Overlay enabled "
+                f"({self._format_overlay_position(self.config.overlay.position)})"
+            )
+            return
+
+        if requested_state:
+            self._notify_user(OVERLAY_INSTALL_MESSAGE)
+            return
+
+        self._notify_user("Overlay disabled")
+
+    def _on_set_overlay_position(
+        self,
+        position: str,
+        icon: PystrayIcon,
+        item: PystrayMenuItem,
+    ) -> None:
+        """Handle selecting a tray-managed overlay corner."""
+        if position == self.config.overlay.position:
+            return
+
+        self.config.overlay.position = position
+        overlay_was_enabled = self.config.overlay.enabled
+        overlay_active = (
+            self._apply_overlay_settings() if overlay_was_enabled else False
+        )
+        self._refresh_tray_menu(icon)
+
+        if overlay_was_enabled and not overlay_active:
+            self._notify_user(OVERLAY_INSTALL_MESSAGE)
+            return
+
+        self._notify_user(
+            f"Overlay position: {self._format_overlay_position(position)}"
+        )
+
+    def _on_set_overlay_auto_hide(
+        self,
+        seconds: float,
+        icon: PystrayIcon,
+        item: PystrayMenuItem,
+    ) -> None:
+        """Handle selecting the ready-state overlay timeout."""
+        if abs(seconds - self.config.overlay.auto_hide_seconds) < 1e-9:
+            return
+
+        self.config.overlay.auto_hide_seconds = seconds
+        self._refresh_presentation_model()
+        self._refresh_tray_menu(icon)
+        self._notify_user(
+            f"Overlay ready auto-hide: {self._format_overlay_auto_hide(seconds)}"
+        )
+
+    def _on_set_overlay_screen(
+        self,
+        screen: str,
+        icon: PystrayIcon,
+        item: PystrayMenuItem,
+    ) -> None:
+        """Handle selecting the overlay display target."""
+        if screen == self.config.overlay.screen:
+            return
+
+        self.config.overlay.screen = screen
+        overlay_was_enabled = self.config.overlay.enabled
+        overlay_active = (
+            self._apply_overlay_settings() if overlay_was_enabled else False
+        )
+        self._refresh_tray_menu(icon)
+
+        if overlay_was_enabled and not overlay_active:
+            self._notify_user(OVERLAY_INSTALL_MESSAGE)
+            return
+
+        self._notify_user(f"Overlay display: {self._format_overlay_screen(screen)}")
+
+    def _on_set_overlay_density(
+        self,
+        density: str,
+        icon: PystrayIcon,
+        item: PystrayMenuItem,
+    ) -> None:
+        """Handle selecting the overlay presentation density."""
+        if density == self.config.overlay.density:
+            return
+
+        self.config.overlay.density = density
+        self._refresh_presentation_model()
+        self._refresh_tray_menu(icon)
+        self._notify_user(f"Overlay view: {self._format_overlay_density(density)}")
 
     def _on_exit(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle exit menu action."""
@@ -276,6 +572,10 @@ class WhisperTrayApp:
         """Load the Whisper model in background thread."""
         self._transcriber.load_model()
         self._model_load_complete.set()
+        if self._transcriber.is_ready:
+            self._publish_state(AppState.READY)
+        else:
+            self._publish_state(AppState.ERROR, message="Model failed to load.")
 
     def run(self) -> None:
         """
@@ -285,32 +585,14 @@ class WhisperTrayApp:
         in the background so the user sees the app right away.
         """
         logger.info("Starting WhisperTray...")
-        logger.info(f"Hotkey: {'+'.join(sorted(self.config.hotkey.hotkey))}")
+        logger.info(f"Hotkey: {format_hotkey(self.config.hotkey.hotkey)}")
         logger.info(f"Auto-paste: {self.config.hotkey.auto_paste}")
+        self._prepare_tray_runtime()
 
-        # Create initial icon image immediately (before model loads)
-        icon_image = self._tray_icon.get_icon_image(
-            is_recording=False,
-            model_ready=False,
-            is_processing=False,
-        )
-
-        # pystray uses the `title` argument for the tray hover text.
-        tray_title = "Loading model..."
-
-        # Set up tray menu
-        menu = self._setup_tray_menu()
-
-        # Create tray icon (appears immediately)
-        icon = pystray.Icon(
-            "WhisperTray",
-            icon_image,
-            tray_title,
-            menu.create_menu(),
-        )
-
-        # Store reference for updates
-        self._tray_icon_ref = icon
+        overlay_requested = self.config.overlay.enabled
+        overlay_active = self._apply_overlay_settings(render_current_state=True)
+        if overlay_requested and not overlay_active:
+            self._notify_user(OVERLAY_INSTALL_MESSAGE)
 
         # Start model loading in background thread (non-blocking)
         threading.Thread(
@@ -327,24 +609,13 @@ class WhisperTrayApp:
         if self._hotkey_listener:
             self._hotkey_listener.start()
 
-        # Background thread: waits for model to become ready, then updates tray UI
-        def _wait_for_model_ready() -> None:
-            self._model_load_complete.wait()
-            # Schedule the icon update on pystray's main thread
-            if self._tray_icon_ref:
-                self._update_tray_icon()
-
-        threading.Thread(
-            target=_wait_for_model_ready,
-            daemon=True,
-            name="model-ready-notifier",
-        ).start()
-
-        # Run tray icon (blocks main thread)
-        icon.run()
-
-        # Cleanup
-        self._stop_worker()
-        if self._hotkey_listener:
-            self._hotkey_listener.stop()
-        logger.info("WhisperTray exited.")
+        try:
+            if self._tray_runtime is None:
+                raise RuntimeError("tray runtime not prepared")
+            self._tray_runtime.run()
+        finally:
+            self._stop_worker()
+            if self._hotkey_listener:
+                self._hotkey_listener.stop()
+            self._overlay.close()
+            logger.info("WhisperTray exited.")

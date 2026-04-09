@@ -11,6 +11,7 @@ A cross-platform system tray application for global speech-to-text using OpenAI'
 - ⚡ **Auto-Paste** — Optional automatic paste into the focused text field (`Cmd+V` on macOS, `Ctrl+V` elsewhere)
 - 🔊 **VAD Filter** — Built-in voice activity detection filters silence and background noise
 - 🎨 **Status Indicator** — System tray icon changes color (green=idle, red=recording, orange=processing)
+- 🪟 **Optional Overlay** — PySide6-powered on-screen status pill with richer status copy, actionable error hints, and a shared Qt tray runtime when UI extras are installed
 - 🚀 **CPU-Optimized** — `int8` quantization, greedy decoding, single worker thread — fast by default
 - 💻 **Cross-Platform** — Windows, Linux, macOS
 - 📦 **Standalone EXE** — Can be built as a portable executable (no Python required)
@@ -40,6 +41,12 @@ pip install -e ".[dev]"
 whisper-tray
 ```
 
+To enable the optional on-screen overlay and the unified Qt tray runtime, install the UI extras:
+
+```bash
+pip install -e ".[dev,ui]"
+```
+
 ## Usage
 
 1. **Start** the application — the tray icon appears immediately (green = ready)
@@ -54,6 +61,7 @@ whisper-tray
 |--------|-------------|
 | **Language** | Set transcription language: English, Russian, or Auto-Detect |
 | **Toggle Auto-Paste** | Enable/disable automatic pasting |
+| **Overlay** | Enable the optional on-screen overlay, choose its corner and display target, tune ready auto-hide behavior, switch between compact or detailed view, and surface actionable recovery hints for failures |
 | **Exit** | Close the application |
 
 ### Icon Colors
@@ -94,7 +102,22 @@ HOTKEY=ctrl,shift,space
 # Behavior settings
 AUTO_PASTE=true
 PASTE_DELAY=0.1
+
+# Optional overlay settings (requires pip install -e ".[ui]")
+OVERLAY_ENABLED=false
+OVERLAY_AUTO_HIDE_SECONDS=1.5  # 0 keeps the ready state visible
+OVERLAY_POSITION=bottom-right  # top-left, top-right, bottom-left, bottom-right
+OVERLAY_SCREEN=primary         # primary, cursor (follows the display under the pointer while visible)
+OVERLAY_DENSITY=detailed       # detailed, compact
+
+# Optional tray runtime selection
+TRAY_BACKEND=auto              # auto, pystray, qt
 ```
+
+`TRAY_BACKEND=auto` prefers the shared Qt tray runtime when `PySide6` is
+installed. Set `TRAY_BACKEND=pystray` to keep the legacy tray loop even with
+UI extras installed, or `TRAY_BACKEND=qt` to explicitly request the unified Qt
+runtime and still fall back safely if Qt cannot start.
 
 ### Performance Presets
 
@@ -141,6 +164,7 @@ BEAM_SIZE=1
 ### Windows
 
 - Standalone EXE available via PyInstaller
+- Python 3.14 builds require PyInstaller 6.15+
 - GPU acceleration requires CUDA Toolkit 11.8+ and NVIDIA GPU
 
 ## Requirements

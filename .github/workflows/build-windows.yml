@@ -27,8 +27,9 @@ jobs:
       - name: Install dependencies (CPU-only for GitHub runners)
         run: |
           python -m pip install --upgrade pip
-          pip install faster-whisper sounddevice pynput pystray Pillow pyperclip requests python-dotenv pyinstaller pyinstaller-hooks-contrib
+          pip install -e ".[build,ui]"
           # Note: GitHub runners have no GPU, so this build will use CPU mode
+          # Installing the UI extras bundles the optional PySide6 overlay backend.
           # For GPU builds, run build.bat on a Windows machine with CUDA installed
 
       - name: Verify ONNX file exists

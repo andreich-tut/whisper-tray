@@ -86,6 +86,7 @@ whisper-tray/
 
 ## Development Conventions
 
+- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow the coding style guide.
 - **Modular architecture**: Logic separated into domain-specific modules
 - **Configuration**: Type-safe dataclasses in `config.py`
 - **Pinned dependencies**: `requirements.txt` with exact versions

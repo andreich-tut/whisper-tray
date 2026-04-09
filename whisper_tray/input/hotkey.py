@@ -7,9 +7,16 @@ Handles global keyboard event listening using pynput.
 from __future__ import annotations
 
 import logging
+from types import SimpleNamespace
 from typing import Callable, Optional, Set
 
-from pynput import keyboard
+try:
+    from pynput import keyboard
+
+    _PYNPUT_IMPORT_ERROR: Exception | None = None
+except ImportError as exc:
+    keyboard = SimpleNamespace(Listener=None)
+    _PYNPUT_IMPORT_ERROR = exc
 
 from whisper_tray.types import PynputKey, PynputKeyCode
 
@@ -104,6 +111,12 @@ class HotkeyListener:
 
     def start(self) -> None:
         """Start listening for keyboard events."""
+        if keyboard.Listener is None:
+            raise RuntimeError(
+                "pynput keyboard backend is unavailable. "
+                "Global hotkeys require a supported desktop session."
+            ) from _PYNPUT_IMPORT_ERROR
+
         self._listener = keyboard.Listener(
             on_press=self._on_press, on_release=self._on_release
         )

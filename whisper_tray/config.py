@@ -10,21 +10,57 @@ from __future__ import annotations
 import logging
 import os
 import platform
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal, Optional
 
 logger = logging.getLogger(__name__)
 
-# Try to load .env file if python-dotenv is available
-try:
-    from dotenv import load_dotenv
 
-    # Load .env from current directory or parent directory
-    _env_loaded = load_dotenv()
-    if _env_loaded:
-        logger.info("Loaded .env file")
-except ImportError:
-    pass  # python-dotenv not installed, rely on environment variables only
+def _env_candidate_paths() -> tuple[Path, ...]:
+    """Return the supported `.env` lookup locations in priority order."""
+    module_dir = Path(__file__).resolve().parent
+    module_parent = module_dir.parent
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def add(path: Path) -> None:
+        resolved = path.resolve(strict=False)
+        if resolved in seen:
+            return
+        seen.add(resolved)
+        candidates.append(path)
+
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        add(exe_dir / ".env")
+        add(exe_dir.parent / ".env")
+        add(exe_dir.parent.parent / ".env")
+        add(exe_dir.parent.parent / "whisper_tray" / ".env")
+
+    add(Path.cwd() / ".env")
+    add(module_parent / ".env")
+    add(module_dir / ".env")
+    return tuple(candidates)
+
+
+def _load_env_file() -> None:
+    """Load the first matching `.env` file when python-dotenv is available."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+
+    for candidate in _env_candidate_paths():
+        if not candidate.is_file():
+            continue
+        if load_dotenv(candidate, override=False):
+            logger.info("Loaded .env file from %s", candidate)
+            return
+
+
+_load_env_file()
 
 
 # --- Platform-aware defaults ---
@@ -164,12 +200,103 @@ class AudioConfig:
 
 
 @dataclass
+class OverlayConfig:
+    """Configuration for the optional on-screen overlay."""
+
+    VALID_POSITIONS = {
+        "top-left",
+        "top-right",
+        "bottom-left",
+        "bottom-right",
+    }
+    VALID_DENSITIES = {
+        "compact",
+        "detailed",
+    }
+    VALID_SCREENS = {
+        "primary",
+        "cursor",
+    }
+
+    enabled: bool = field(
+        default_factory=lambda: os.getenv("OVERLAY_ENABLED", "false").lower()
+        in ("true", "1", "yes", "on")
+    )
+    auto_hide_seconds: float = field(
+        default_factory=lambda: float(os.getenv("OVERLAY_AUTO_HIDE_SECONDS", "1.5"))
+    )
+    position: str = field(
+        default_factory=lambda: os.getenv("OVERLAY_POSITION", "bottom-right")
+    )
+    screen: str = field(default_factory=lambda: os.getenv("OVERLAY_SCREEN", "primary"))
+    density: str = field(
+        default_factory=lambda: os.getenv("OVERLAY_DENSITY", "detailed")
+    )
+
+    def __post_init__(self) -> None:
+        """Validate overlay settings."""
+        if self.auto_hide_seconds < 0:
+            logger.warning(
+                "Negative overlay auto-hide duration: %s. Setting to 1.5",
+                self.auto_hide_seconds,
+            )
+            self.auto_hide_seconds = 1.5
+
+        if self.position not in self.VALID_POSITIONS:
+            logger.warning(
+                "Unknown overlay position: %s. Setting to bottom-right.",
+                self.position,
+            )
+            self.position = "bottom-right"
+
+        if self.screen not in self.VALID_SCREENS:
+            logger.warning(
+                "Unknown overlay screen target: %s. Setting to primary.",
+                self.screen,
+            )
+            self.screen = "primary"
+
+        if self.density not in self.VALID_DENSITIES:
+            logger.warning(
+                "Unknown overlay density: %s. Setting to detailed.",
+                self.density,
+            )
+            self.density = "detailed"
+
+
+@dataclass
+class UiConfig:
+    """Configuration for UI runtime selection and startup behavior."""
+
+    VALID_TRAY_BACKENDS = {
+        "auto",
+        "pystray",
+        "qt",
+    }
+
+    tray_backend: str = field(
+        default_factory=lambda: os.getenv("TRAY_BACKEND", "auto").lower()
+    )
+
+    def __post_init__(self) -> None:
+        """Validate tray runtime selection."""
+        if self.tray_backend not in self.VALID_TRAY_BACKENDS:
+            logger.warning(
+                "Unknown tray backend: %s. Setting to auto.",
+                self.tray_backend,
+            )
+            self.tray_backend = "auto"
+
+
+@dataclass
 class AppConfig:
     """Main application configuration combining all sub-configs."""
 
     model: ModelConfig = field(default_factory=ModelConfig)
     hotkey: HotkeyConfig = field(default_factory=HotkeyConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
+    overlay: OverlayConfig = field(default_factory=OverlayConfig)
+    ui: UiConfig = field(default_factory=UiConfig)
 
     @classmethod
     def from_env(cls) -> "AppConfig":
@@ -198,3 +325,11 @@ class AppConfig:
             f"Audio: {self.audio.sample_rate}Hz, "
             f"min duration: {self.audio.min_recording_duration}s"
         )
+        logger.info(
+            f"Overlay: enabled={self.overlay.enabled}, "
+            f"position={self.overlay.position}, "
+            f"screen={self.overlay.screen}, "
+            f"auto-hide={self.overlay.auto_hide_seconds}s, "
+            f"density={self.overlay.density}"
+        )
+        logger.info(f"UI: tray-backend={self.ui.tray_backend}")

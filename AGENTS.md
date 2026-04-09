@@ -41,6 +41,8 @@ black whisper_tray/ tests/ && isort whisper_tray/ tests/ && flake8 whisper_tray/
 
 ## Architecture
 
+- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow the coding style guide.
+
 The application is structured as independent subsystems coordinated by `app.py`:
 
 - **`app.py`** — `WhisperTrayApp`: the central orchestrator. Wires together all subsystems, manages the recording state machine, and runs the pystray event loop on the main thread.

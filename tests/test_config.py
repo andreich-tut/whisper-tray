@@ -2,15 +2,24 @@
 
 import logging
 import os
+from pathlib import Path
 from typing import Generator
 
 import pytest
 
-from whisper_tray.config import AppConfig, AudioConfig, HotkeyConfig, ModelConfig
+import whisper_tray.config as config_module
+from whisper_tray.config import (
+    AppConfig,
+    AudioConfig,
+    HotkeyConfig,
+    ModelConfig,
+    OverlayConfig,
+    UiConfig,
+)
 
 
 @pytest.fixture(autouse=True)
-def clear_env() -> Generator[None, None, None]:
+def _clear_env() -> Generator[None, None, None]:
     """Clear environment variables that could affect tests."""
     env_vars = [
         "MODEL_SIZE",
@@ -27,6 +36,12 @@ def clear_env() -> Generator[None, None, None]:
         "BEAM_SIZE",
         "CONDITION_ON_PREVIOUS_TEXT",
         "CPU_THREADS",
+        "OVERLAY_ENABLED",
+        "OVERLAY_AUTO_HIDE_SECONDS",
+        "OVERLAY_POSITION",
+        "OVERLAY_SCREEN",
+        "OVERLAY_DENSITY",
+        "TRAY_BACKEND",
     ]
     saved = {}
     for var in env_vars:
@@ -128,6 +143,8 @@ class TestAppConfig:
         assert isinstance(config.model, ModelConfig)
         assert isinstance(config.hotkey, HotkeyConfig)
         assert isinstance(config.audio, AudioConfig)
+        assert isinstance(config.overlay, OverlayConfig)
+        assert isinstance(config.ui, UiConfig)
 
     def test_log_config(self, caplog: pytest.LogCaptureFixture) -> None:
         """Test logging configuration."""
@@ -135,3 +152,121 @@ class TestAppConfig:
         config = AppConfig()
         config.log_config()
         assert "Model config" in caplog.text
+        assert "Overlay:" in caplog.text
+        assert "UI: tray-backend=auto" in caplog.text
+
+
+class TestOverlayConfig:
+    """Test overlay configuration."""
+
+    def test_defaults(self) -> None:
+        """Overlay should stay disabled until a UI backend is installed."""
+        config = OverlayConfig()
+        assert config.enabled is False
+        assert config.auto_hide_seconds == 1.5
+        assert config.position == "bottom-right"
+        assert config.screen == "primary"
+        assert config.density == "detailed"
+
+    def test_env_var_bindings(self) -> None:
+        """Overlay config should read environment variables."""
+        os.environ["OVERLAY_ENABLED"] = "true"
+        os.environ["OVERLAY_AUTO_HIDE_SECONDS"] = "0"
+        os.environ["OVERLAY_POSITION"] = "top-left"
+        os.environ["OVERLAY_SCREEN"] = "cursor"
+        os.environ["OVERLAY_DENSITY"] = "compact"
+
+        config = OverlayConfig()
+        assert config.enabled is True
+        assert config.auto_hide_seconds == 0
+        assert config.position == "top-left"
+        assert config.screen == "cursor"
+        assert config.density == "compact"
+
+    def test_invalid_position_falls_back_to_bottom_right(self) -> None:
+        """Unknown positions should degrade to the default corner."""
+        config = OverlayConfig(position="center")
+
+        assert config.position == "bottom-right"
+
+    def test_invalid_density_falls_back_to_detailed(self) -> None:
+        """Unknown densities should degrade to the default presentation."""
+        config = OverlayConfig(density="wide")
+
+        assert config.density == "detailed"
+
+    def test_invalid_screen_falls_back_to_primary(self) -> None:
+        """Unknown screen targets should degrade to the primary display."""
+        config = OverlayConfig(screen="secondary")
+
+        assert config.screen == "primary"
+
+
+class TestUiConfig:
+    """Test UI runtime selection configuration."""
+
+    def test_defaults(self) -> None:
+        """Auto runtime selection should be the default."""
+        config = UiConfig()
+
+        assert config.tray_backend == "auto"
+
+    def test_env_var_bindings(self) -> None:
+        """The tray runtime selection should read from the environment."""
+        os.environ["TRAY_BACKEND"] = "pystray"
+
+        config = UiConfig()
+
+        assert config.tray_backend == "pystray"
+
+    def test_invalid_backend_falls_back_to_auto(self) -> None:
+        """Unknown runtime selections should degrade to auto."""
+        config = UiConfig(tray_backend="mystery")
+
+        assert config.tray_backend == "auto"
+
+
+class TestEnvDiscovery:
+    """Test `.env` lookup behavior across source and frozen runs."""
+
+    def test_env_candidate_paths_include_package_env_for_frozen_build(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Frozen builds should look next to the exe and in repo-style package paths."""
+        monkeypatch.setattr(config_module, "__file__", "/repo/whisper_tray/config.py")
+        monkeypatch.setattr(config_module.sys, "frozen", True, raising=False)
+        monkeypatch.setattr(
+            config_module.sys,
+            "executable",
+            "/repo/dist/WhisperTray/WhisperTray.exe",
+        )
+        monkeypatch.setattr(
+            config_module.Path,
+            "cwd",
+            staticmethod(lambda: Path("/repo/runtime")),
+        )
+
+        candidates = config_module._env_candidate_paths()
+
+        assert Path("/repo/dist/WhisperTray/.env") in candidates
+        assert Path("/repo/.env") in candidates
+        assert Path("/repo/whisper_tray/.env") in candidates
+
+    def test_env_candidate_paths_include_root_and_package_paths_in_source_mode(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Source runs should keep searching the cwd, project root, and package dir."""
+        monkeypatch.setattr(config_module, "__file__", "/repo/whisper_tray/config.py")
+        monkeypatch.delattr(config_module.sys, "frozen", raising=False)
+        monkeypatch.setattr(
+            config_module.Path,
+            "cwd",
+            staticmethod(lambda: Path("/repo")),
+        )
+
+        candidates = config_module._env_candidate_paths()
+
+        assert candidates[0] == Path("/repo/.env")
+        assert Path("/repo/whisper_tray/.env") in candidates

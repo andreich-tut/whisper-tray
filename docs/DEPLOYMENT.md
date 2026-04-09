@@ -34,6 +34,7 @@ No Python installation required!
 - **Windows 10/11** (64-bit)
 - **Python 3.12+** - Download from [python.org](https://www.python.org/downloads/)
   - ✅ Check "Add Python to PATH" during installation
+- **PyInstaller 6.15+** when building with Python 3.14
 - **NVIDIA GPU** (optional, for GPU acceleration)
 
 ### Step-by-Step Build
@@ -42,22 +43,34 @@ No Python installation required!
 
 ```bash
 # From project root
-pip install -e ".[build]"
+pip install -e ".[build,ui]"
 ```
 
-This installs `pyinstaller` and all runtime dependencies.
+This installs `pyinstaller`, the optional `PySide6` overlay backend, and all
+runtime dependencies.
+
+If you are building with Python 3.14, make sure the environment resolves
+`PyInstaller>=6.15.0`. Older PyInstaller releases can produce broken bundles
+that fail to load `python314.dll`.
+
+If you want a smaller tray-only build without the overlay window, you can still
+use:
+
+```bash
+pip install -e ".[build]"
+```
 
 #### 2. Build the Executable
 
 ```bash
-pyinstaller --clean --noconfirm --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
 ```
 
 Or use PowerShell:
 
 ```powershell
 $env:DEVICE = "cuda"  # or "cpu"
-pyinstaller --clean --noconfirm --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
 ```
 
 #### 3. Verify Build Output
@@ -80,13 +93,17 @@ dist/WhisperTray/
 ```
 
 A system tray icon should appear. Hold `Ctrl+Shift+Space` to test recording.
+If you want to test the on-screen overlay in the packaged build, create a
+`.env` file next to the executable with `OVERLAY_ENABLED=true`.
+If you want to compare the legacy and unified tray runtimes during Windows QA,
+set `TRAY_BACKEND=pystray` or `TRAY_BACKEND=qt` in that same `.env` file.
 
 ### Debug Build (with Console)
 
 For troubleshooting, build with a visible console:
 
 ```bash
-pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir build/windows/whisper_tray.spec
 ```
 
 Run `dist\WhisperTray_DEBUG\WhisperTray_DEBUG.exe` to see console output.
@@ -279,6 +296,20 @@ This auto-creates a GitHub Release with the `.exe` attached!
 ```bash
 pip install --upgrade faster-whisper sounddevice pynput pystray Pillow pyperclip python-dotenv pyinstaller
 ```
+
+**"Failed to load Python DLL ...\\python314.dll"**
+- This usually means the bundle was built with an older PyInstaller release or
+  the generated `_internal` folder is missing next to the executable.
+- Upgrade the packager and rebuild clean:
+  ```bash
+  pip install --upgrade "pyinstaller>=6.15.0"
+  ```
+- Run the executable from the generated app folder:
+  ```cmd
+  dist\WhisperTray\WhisperTray.exe
+  ```
+- Keep `WhisperTray.exe` and its sibling `_internal` directory together when
+  copying or zipping the app.
 
 **"NO_SUCHFILE: Load model from ...silero_vad_v6.onnx failed"**
 
