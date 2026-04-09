@@ -37,11 +37,10 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          cd whisper_tray
           # Force CPU mode for GitHub Actions runners (no GPU available)
           set DEVICE=cpu
           set COMPUTE_TYPE=int8
-          pyinstaller --clean --noconfirm whisper_tray.spec
+          pyinstaller --clean --noconfirm --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
         shell: cmd
 
       - name: Verify build output
@@ -91,8 +90,7 @@ jobs:
 
       - name: Build Debug Version (with console)
         run: |
-          cd whisper_tray
-          pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir whisper_tray.spec
+          pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
         shell: cmd
 
       - name: Copy ONNX files for Debug build

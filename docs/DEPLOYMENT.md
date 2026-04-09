@@ -50,16 +50,14 @@ This installs `pyinstaller` and all runtime dependencies.
 #### 2. Build the Executable
 
 ```bash
-cd whisper_tray
-pyinstaller --clean --noconfirm whisper_tray.spec
+pyinstaller --clean --noconfirm --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
 ```
 
 Or use PowerShell:
 
 ```powershell
-cd whisper_tray
 $env:DEVICE = "cuda"  # or "cpu"
-pyinstaller --clean --noconfirm whisper_tray.spec
+pyinstaller --clean --noconfirm --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
 ```
 
 #### 3. Verify Build Output
@@ -88,8 +86,7 @@ A system tray icon should appear. Hold `Ctrl+Shift+Space` to test recording.
 For troubleshooting, build with a visible console:
 
 ```bash
-cd whisper_tray
-pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir whisper_tray.spec
+pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir --additional-hooks-dir=build/windows build/windows/whisper_tray.spec
 ```
 
 Run `dist\WhisperTray_DEBUG\WhisperTray_DEBUG.exe` to see console output.
