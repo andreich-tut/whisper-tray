@@ -50,10 +50,13 @@ class WhisperTrayApp:
 
         # State
         self._is_recording = False
+        self._is_processing = False
         self._current_language: str = self.config.model.language or "auto"
 
         # Threading
         self._model_load_complete = threading.Event()
+        self._flash_event = threading.Event()
+        self._flash_timer: Optional[threading.Thread] = None
         self._tray_icon_ref: Optional[PystrayIcon] = None
         self._hotkey_listener: Optional[HotkeyListener] = None
 
@@ -87,6 +90,16 @@ class WhisperTrayApp:
         audio_data = self._recorder.stop_recording()
         logger.info(f"Recording stopped. Captured {len(audio_data)} samples.")
 
+        # Don't process very short recordings
+        duration = len(audio_data) / 16000  # 16kHz sample rate
+        if duration < 0.3:
+            logger.info(f"Ignoring short recording ({duration:.2f}s < 0.3s)")
+            self._update_tray_icon()
+            return
+
+        # Start flash timer before transcription
+        self._start_flash_timer()
+
         # Transcribe in a separate thread to not block hotkey listener
         threading.Thread(
             target=self._process_transcription,
@@ -99,10 +112,37 @@ class WhisperTrayApp:
 
     def _process_transcription(self, audio_data: np.ndarray) -> None:
         """Process transcription in background thread."""
-        text = self._transcriber.transcribe(audio_data, self._current_language)
-        if text:
-            logger.info(f"Recognized text: {text}")
-            self._clipboard.copy_and_paste(text)
+        try:
+            text = self._transcriber.transcribe(audio_data, self._current_language)
+            if text:
+                logger.info(f"Recognized text: {text}")
+                self._clipboard.copy_and_paste(text)
+        finally:
+            # Stop flash timer after transcription completes (success or error)
+            self._stop_flash_timer()
+
+    def _start_flash_timer(self) -> None:
+        """Start background thread that flashes the icon during processing."""
+        self._is_processing = True
+        self._flash_event.clear()
+
+        def flash_loop() -> None:
+            while not self._flash_event.is_set():
+                # Toggle between processing and idle icon
+                self._update_tray_icon()
+                self._flash_event.wait(0.5)  # 500ms interval
+
+        self._flash_timer = threading.Thread(target=flash_loop, daemon=True)
+        self._flash_timer.start()
+
+    def _stop_flash_timer(self) -> None:
+        """Stop the flash timer."""
+        self._is_processing = False
+        self._flash_event.set()
+        if self._flash_timer:
+            self._flash_timer.join(timeout=1.0)
+        # Update icon to final state after stopping flash
+        self._update_tray_icon()
 
     def _update_tray_icon(self) -> None:
         """Update the tray icon to reflect current state."""
@@ -111,6 +151,7 @@ class WhisperTrayApp:
                 self._tray_icon_ref,
                 self._is_recording,
                 self._transcriber.is_ready,
+                self._is_processing,
             )
 
     def _setup_hotkey_listener(self) -> None:
@@ -188,6 +229,7 @@ class WhisperTrayApp:
         icon_image = self._tray_icon.get_icon_image(
             is_recording=False,
             model_ready=self._transcriber.is_ready,
+            is_processing=False,
         )
 
         # Determine tooltip
@@ -195,6 +237,7 @@ class WhisperTrayApp:
             is_recording=False,
             model_ready=self._transcriber.is_ready,
             device=self._transcriber.device,
+            is_processing=False,
         )
 
         # Set up tray menu
