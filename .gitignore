@@ -4,7 +4,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
 develop-eggs/
 dist/
 downloads/
@@ -19,6 +18,9 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# PyInstaller output
+build/
 
 # Virtual environments
 venv/
