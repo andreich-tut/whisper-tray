@@ -43,13 +43,16 @@ third_party_imports = [
 
 hidden_imports = whisper_tray_modules + third_party_imports
 
+# Get the project root directory (parent of build/windows/)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 a = Analysis(
-    ['whisper_tray/cli.py'],
-    pathex=[],
+    [os.path.join(project_root, 'whisper_tray', 'cli.py')],
+    pathex=[project_root],
     binaries=[],
     datas=[],
     hiddenimports=hidden_imports,
-    hookspath=['build/windows'],
+    hookspath=[os.path.join(project_root, 'build', 'windows')],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
