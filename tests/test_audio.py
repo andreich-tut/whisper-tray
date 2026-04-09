@@ -11,24 +11,24 @@ from whisper_tray.config import AudioConfig
 class TestAudioRecorder:
     """Test audio recorder."""
 
-    def test_init_with_defaults(self):
+    def test_init_with_defaults(self) -> None:
         """Test initialization with default config."""
         recorder = AudioRecorder()
         assert recorder.config.sample_rate == 16000
 
-    def test_init_with_custom_config(self):
+    def test_init_with_custom_config(self) -> None:
         """Test initialization with custom config."""
         config = AudioConfig(sample_rate=44100)
         recorder = AudioRecorder(config)
         assert recorder.config.sample_rate == 44100
 
-    def test_not_recording_initially(self):
+    def test_not_recording_initially(self) -> None:
         """Test that recorder is not recording initially."""
         recorder = AudioRecorder()
         assert recorder.is_recording is False
 
     @patch("whisper_tray.audio.recorder.sd")
-    def test_start_recording(self, mock_sd):
+    def test_start_recording(self, mock_sd: MagicMock) -> None:
         """Test starting recording."""
         mock_stream = MagicMock()
         mock_sd.InputStream.return_value = mock_stream
@@ -41,7 +41,7 @@ class TestAudioRecorder:
         assert recorder.is_recording is True
 
     @patch("whisper_tray.audio.recorder.sd")
-    def test_stop_recording(self, mock_sd):
+    def test_stop_recording(self, mock_sd: MagicMock) -> None:
         """Test stopping recording."""
         mock_stream = MagicMock()
         mock_sd.InputStream.return_value = mock_stream

@@ -14,6 +14,7 @@ import numpy as np
 import sounddevice as sd
 
 from whisper_tray.config import AudioConfig
+from whisper_tray.types import SounddeviceInputStream
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class AudioRecorder:
         """
         self.config = config or AudioConfig()
         self._audio_queue: queue.Queue = queue.Queue()
-        self._current_stream: Optional[sd.InputStream] = None
+        self._current_stream: Optional[SounddeviceInputStream] = None
 
     def _audio_callback(
         self, indata: np.ndarray, frames: int, time_info: dict, status: sd.CallbackFlags

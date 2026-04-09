@@ -25,7 +25,7 @@ except Exception as e:
     sys.exit(1)
 
 
-def create_test_icon():
+def create_test_icon() -> "Image.Image":
     """Create a simple blue test icon."""
     size = 64
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -35,12 +35,12 @@ def create_test_icon():
     return image
 
 
-def on_exit(icon, item=None):
+def on_exit(icon: "pystray.Icon", item: "pystray.MenuItem | None" = None) -> None:
     logger.info("Exit clicked")
     icon.stop()
 
 
-def main():
+def main() -> None:
     logger.info("Creating test tray icon...")
     print("\n" + "=" * 60)
     print("TEST TRAY ICON")

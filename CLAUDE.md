@@ -70,4 +70,4 @@ See `docs/DEPLOYMENT.md`. Quick build on Windows:
 pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
 ```
 
-CI runs on `windows-latest` and tests Python 3.10–3.12.
+CI runs on `windows-latest` and tests Python 3.12+.

@@ -7,7 +7,7 @@ name = "whisper-tray"
 version = "0.1.0"
 description = "Windows system tray speech-to-text using faster-whisper"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
   {name = "Developer", email = "dev@example.com"}
@@ -18,9 +18,8 @@ classifiers = [
   "Intended Audience :: End Users/Desktop",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
   "faster-whisper>=1.0.0",
@@ -60,7 +59,7 @@ include = ["whisper_tray*"]
 
 [tool.black]
 line-length = 88
-target-version = ["py310", "py311", "py312"]
+target-version = ["py312"]
 include = '\.pyi?$'
 
 [tool.isort]
@@ -83,7 +82,7 @@ per-file-ignores = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true

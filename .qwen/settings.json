@@ -18,7 +18,8 @@
       "Bash(pre-commit *)",
       "Bash(detect-secrets *)",
       "Bash(sleep *)",
-      "Bash(cat *)"
+      "Bash(cat *)",
+      "Bash(git add *)"
     ]
   },
   "$version": 3

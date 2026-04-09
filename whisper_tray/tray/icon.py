@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-import pystray
 from PIL import Image, ImageDraw
+
+from whisper_tray.types import TrayIcon as PystrayIcon
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class TrayIcon:
 
     def __init__(self) -> None:
         """Initialize tray icon manager."""
-        self._icon: Optional[pystray.Icon] = None
+        self._icon: Optional[PystrayIcon] = None
 
     @staticmethod
     def create_icon_image(color: str, size: int = 64) -> Image.Image:
@@ -68,7 +69,7 @@ class TrayIcon:
             return TrayIcon.create_icon_image("lightgreen")
 
     def update_icon(
-        self, icon: pystray.Icon, is_recording: bool, model_ready: bool
+        self, icon: PystrayIcon, is_recording: bool, model_ready: bool
     ) -> None:
         """
         Update the tray icon to reflect current state.

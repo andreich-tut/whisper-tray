@@ -32,7 +32,7 @@ No Python installation required!
 ### Prerequisites
 
 - **Windows 10/11** (64-bit)
-- **Python 3.10+** - Download from [python.org](https://www.python.org/downloads/)
+- **Python 3.12+** - Download from [python.org](https://www.python.org/downloads/)
   - ✅ Check "Add Python to PATH" during installation
 - **NVIDIA GPU** (optional, for GPU acceleration)
 
@@ -274,7 +274,7 @@ This auto-creates a GitHub Release with the `.exe` attached!
 ### Common Build Issues
 
 **"Python not found"**
-- Install Python 3.10+ from python.org
+- Install Python 3.12+ from python.org
 - Check "Add Python to PATH" during installation
 - Restart your terminal/PowerShell
 

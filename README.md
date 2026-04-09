@@ -100,7 +100,7 @@ PASTE_DELAY=0.1
 ### Software
 
 - **OS**: Windows 10/11
-- **Python**: 3.10, 3.11, or 3.12 (for source mode)
+- **Python**: 3.12+ (for source mode)
 - **CUDA Toolkit**: 11.8 or 12.x (optional, for GPU acceleration)
 
 ## Building Windows Executable

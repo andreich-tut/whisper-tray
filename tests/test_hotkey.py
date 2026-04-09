@@ -8,26 +8,26 @@ from whisper_tray.input.hotkey import HotkeyListener
 class TestHotkeyListener:
     """Test hotkey listener."""
 
-    def test_init(self):
+    def test_init(self) -> None:
         """Test initialization."""
         listener = HotkeyListener(hotkey={"ctrl", "space"})
         assert listener.hotkey == {"ctrl", "space"}
 
-    def test_get_key_name_char(self):
+    def test_get_key_name_char(self) -> None:
         """Test getting key name from character key."""
         mock_key = MagicMock()
         mock_key.char = "a"
         mock_key.name = None
         assert HotkeyListener._get_key_name(mock_key) == "a"
 
-    def test_get_key_name_ctrl(self):
+    def test_get_key_name_ctrl(self) -> None:
         """Test getting key name from ctrl key."""
         mock_key = MagicMock()
         mock_key.char = None
         mock_key.name = "ctrl_l"
         assert HotkeyListener._get_key_name(mock_key) == "ctrl"
 
-    def test_get_key_name_space(self):
+    def test_get_key_name_space(self) -> None:
         """Test getting key name from space key."""
         mock_key = MagicMock()
         mock_key.char = None
@@ -35,7 +35,7 @@ class TestHotkeyListener:
         assert HotkeyListener._get_key_name(mock_key) == "space"
 
     @patch("whisper_tray.input.hotkey.keyboard.Listener")
-    def test_start(self, mock_listener_class):
+    def test_start(self, mock_listener_class: MagicMock) -> None:
         """Test starting listener."""
         mock_listener_instance = MagicMock()
         mock_listener_class.return_value = mock_listener_instance
@@ -47,7 +47,7 @@ class TestHotkeyListener:
         mock_listener_instance.start.assert_called_once()
 
     @patch("whisper_tray.input.hotkey.keyboard.Listener")
-    def test_stop(self, mock_listener_class):
+    def test_stop(self, mock_listener_class: MagicMock) -> None:
         """Test stopping listener."""
         mock_listener_instance = MagicMock()
         mock_listener_class.return_value = mock_listener_instance

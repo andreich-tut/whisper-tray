@@ -11,6 +11,9 @@ from typing import Callable, Optional
 
 import pystray
 
+from whisper_tray.types import TrayIcon as PystrayIcon
+from whisper_tray.types import TrayMenuItem as PystrayMenuItem
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,7 +53,7 @@ class TrayMenu:
     def _wrap_callback(self, callback: Optional[Callable]) -> Callable:
         """Wrap callback to handle pystray's signature requirements."""
 
-        def wrapped(icon: pystray.Icon, item: pystray.MenuItem) -> None:
+        def wrapped(icon: PystrayIcon, item: PystrayMenuItem) -> None:
             if callback:
                 callback(icon, item)
 

@@ -14,7 +14,7 @@ echo.
 REM Check Python
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [ERROR] Python not found. Install Python 3.10+ from python.org
+    echo [ERROR] Python not found. Install Python 3.12+ from python.org
     pause
     exit /b 1
 )

@@ -66,7 +66,7 @@ call :show_progress 5 "Checking Python..."
 python --version >nul 2>&1
 if errorlevel 1 (
     echo.
-    echo %RED%[ERROR] Python not found. Install Python 3.10+ from python.org%RESET%
+    echo %RED%[ERROR] Python not found. Install Python 3.12+ from python.org%RESET%
     echo %CURSOR_SHOW%
     pause
     exit /b 1

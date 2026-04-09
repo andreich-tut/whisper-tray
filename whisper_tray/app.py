@@ -20,6 +20,8 @@ from whisper_tray.config import AppConfig
 from whisper_tray.input.hotkey import HotkeyListener
 from whisper_tray.tray.icon import TrayIcon
 from whisper_tray.tray.menu import TrayMenu
+from whisper_tray.types import TrayIcon as PystrayIcon
+from whisper_tray.types import TrayMenuItem as PystrayMenuItem
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ class WhisperTrayApp:
 
         # Threading
         self._model_load_complete = threading.Event()
-        self._tray_icon_ref: Optional[pystray.Icon] = None
+        self._tray_icon_ref: Optional[PystrayIcon] = None
         self._hotkey_listener: Optional[HotkeyListener] = None
 
     def _on_hotkey_pressed(self) -> None:
@@ -136,27 +138,27 @@ class WhisperTrayApp:
             get_language_state=lambda: self._current_language,
         )
 
-    def _on_toggle_auto_paste(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+    def _on_toggle_auto_paste(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle toggle auto-paste menu action."""
         new_state = self._clipboard.toggle_auto_paste()
         icon.notify(f"Auto-paste {'enabled' if new_state else 'disabled'}")
 
-    def _on_set_language_en(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+    def _on_set_language_en(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to English."""
         self._current_language = "en"
         icon.notify("Language: English")
 
-    def _on_set_language_ru(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+    def _on_set_language_ru(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to Russian."""
         self._current_language = "ru"
         icon.notify("Language: Russian")
 
-    def _on_set_language_auto(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+    def _on_set_language_auto(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle set language to auto-detect."""
         self._current_language = "auto"
         icon.notify("Language: Auto-detect")
 
-    def _on_exit(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
+    def _on_exit(self, icon: PystrayIcon, item: PystrayMenuItem) -> None:
         """Handle exit menu action."""
         icon.stop()
 

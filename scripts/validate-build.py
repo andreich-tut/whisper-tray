@@ -52,9 +52,9 @@ def check_pyproject() -> bool:
     try:
         # Python 3.11+
         try:
-            import tomllib
+            import tomllib  # noqa: F811
         except ImportError:
-            import tomli as tomllib
+            import tomli as tomllib  # type: ignore[no-redef]
 
         with open("pyproject.toml", "rb") as f:
             tomllib.load(f)

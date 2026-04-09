@@ -147,3 +147,7 @@ python -m whisper_tray
 - `docs/DEPLOYMENT.md`: Build and deployment instructions
 - `docs/CONTRIBUTING.md`: Developer documentation
 - `.claude/settings.json`: IDE-specific permissions configuration
+
+## Qwen Added Memories
+- Always run `python scripts/check.py` after making changes to the project to ensure all code quality checks pass.
+- After running checks successfully, always suggest the user to make a commit using the commit-name skill.

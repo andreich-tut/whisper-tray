@@ -11,6 +11,8 @@ from typing import Callable, Optional, Set
 
 from pynput import keyboard
 
+from whisper_tray.types import PynputKey, PynputKeyCode
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ class HotkeyListener:
         self._is_held: bool = False  # Track if hotkey is currently held down
 
     @staticmethod
-    def _get_key_name(key: keyboard.Key | keyboard.KeyCode) -> str:
+    def _get_key_name(key: PynputKey | PynputKeyCode) -> str:
         """Extract key name from pynput key object."""
         if hasattr(key, "char") and key.char is not None:
             return str(key.char).lower()
@@ -73,7 +75,7 @@ class HotkeyListener:
                 return "cmd"
             return key_str
 
-    def _on_press(self, key: keyboard.Key | keyboard.KeyCode) -> None:
+    def _on_press(self, key: PynputKey | PynputKeyCode) -> None:
         """Handle key press events."""
         key_name = self._get_key_name(key)
         self._current_keys.add(key_name)
@@ -86,7 +88,7 @@ class HotkeyListener:
             if self._on_press_callback:
                 self._on_press_callback()
 
-    def _on_release(self, key: keyboard.Key | keyboard.KeyCode) -> None:
+    def _on_release(self, key: PynputKey | PynputKeyCode) -> None:
         """Handle key release events."""
         key_name = self._get_key_name(key)
 

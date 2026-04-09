@@ -79,7 +79,7 @@ whisper-tray/
 
 ### Prerequisites
 
-- **Python**: 3.10, 3.11, or 3.12
+- **Python**: 3.12+
 - **OS**: Windows 10/11 (Linux/macOS for development only, no tray/hotkey testing)
 - **Git**: For version control
 
