@@ -61,6 +61,7 @@ class WhisperTrayApp:
         self._flash_timer: Optional[threading.Thread] = None
         self._tray_icon_ref: Optional[PystrayIcon] = None
         self._hotkey_listener: Optional[HotkeyListener] = None
+        self._tray_update_lock = threading.Lock()
 
         # Transcription work queue (single worker thread)
         self._transcription_queue: queue.Queue = queue.Queue()
@@ -195,35 +196,32 @@ class WhisperTrayApp:
         # Update icon to final state after stopping flash
         self._update_tray_icon()
 
-    def _update_tray_icon(self) -> None:
-        """Update the tray icon image and tooltip to reflect current state.
+    def _get_tray_title(self) -> str:
+        """Return the current tray hover text for the active app state."""
+        return self._tray_icon.get_tooltip(
+            is_recording=self._is_recording,
+            model_ready=self._transcriber.is_ready,
+            device=self._transcriber.device,
+            is_processing=self._is_processing,
+        )
 
-        Thread-safe: uses icon.run_callable() to ensure the update
-        happens on pystray's main thread (required on Windows to
-        avoid WinError 1402 - invalid handle).
-        """
-        if self._tray_icon_ref:
+    def _update_tray_icon(self) -> None:
+        """Update the tray icon image and hover text for the current state."""
+        if not self._tray_icon_ref:
+            return
+
+        with self._tray_update_lock:
             try:
-                self._tray_icon_ref.run_callable(
-                    lambda icon: self._tray_icon.update_icon(
-                        icon,
-                        self._is_recording,
-                        self._transcriber.is_ready,
-                        self._is_processing,
-                    )
+                self._tray_icon.update_icon(
+                    self._tray_icon_ref,
+                    self._is_recording,
+                    self._transcriber.is_ready,
+                    self._is_processing,
                 )
-                # Also update tooltip
-                tooltip = self._tray_icon.get_tooltip(
-                    is_recording=self._is_recording,
-                    model_ready=self._transcriber.is_ready,
-                    device=self._transcriber.device,
-                    is_processing=self._is_processing,
-                )
-                self._tray_icon_ref.run_callable(
-                    lambda icon: setattr(icon, "tooltip", tooltip)
-                )
-            except Exception as e:
-                logger.debug(f"Failed to update tray icon: {e}")
+                # pystray exposes the tray tooltip text via the `title` property.
+                self._tray_icon_ref.title = self._get_tray_title()
+            except Exception:
+                logger.warning("Failed to update tray icon state", exc_info=True)
 
     def _setup_hotkey_listener(self) -> None:
         """Set up the global hotkey listener."""
@@ -297,8 +295,8 @@ class WhisperTrayApp:
             is_processing=False,
         )
 
-        # Tooltip shows loading state
-        tooltip = "Loading model..."
+        # pystray uses the `title` argument for the tray hover text.
+        tray_title = "Loading model..."
 
         # Set up tray menu
         menu = self._setup_tray_menu()
@@ -307,7 +305,7 @@ class WhisperTrayApp:
         icon = pystray.Icon(
             "WhisperTray",
             icon_image,
-            tooltip,
+            tray_title,
             menu.create_menu(),
         )
 
