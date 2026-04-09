@@ -121,6 +121,19 @@ pip install -e ".[dev]"
 black whisper_tray/ tests/ && isort whisper_tray/ tests/ && flake8 whisper_tray/ tests/ && mypy whisper_tray/ && bandit -r whisper_tray/
 ```
 
+## Plans
+
+Plan files live in `plans/`. Name them:
+
+```
+YYYY-MM-DD-HHMM-<slug>.md
+```
+
+- **Datetime** — use the first git commit time for the file; use filesystem mtime if the file has never been committed. Local timezone, 24-hour clock, no separators between hour and minute.
+- **Slug** — lowercase, hyphen-separated, no redundant words like `plan` or `prompt` (the directory already implies it). Keep it short: `overlay-ui`, `cpu-first-transcription`, `macos-m1-support`.
+
+When a plan is superseded by a newer one, delete it. When a plan is fully implemented, keep it for history — do not delete it.
+
 ## Building and Running
 
 ```bash

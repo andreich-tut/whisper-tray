@@ -64,6 +64,19 @@ The application is structured as independent subsystems coordinated by `app.py`:
 
 All settings come from environment variables (loaded from `.env` if present). Key vars: `MODEL_SIZE`, `DEVICE`, `COMPUTE_TYPE`, `LANGUAGE`, `HOTKEY`, `AUTO_PASTE`, `PASTE_DELAY`. See README for full reference.
 
+## Plans
+
+Plan files live in `plans/`. Name them:
+
+```
+YYYY-MM-DD-HHMM-<slug>.md
+```
+
+- **Datetime** — use the first git commit time for the file; use filesystem mtime if the file has never been committed. Local timezone, 24-hour clock, no separators between hour and minute.
+- **Slug** — lowercase, hyphen-separated, no redundant words like `plan` or `prompt` (the directory already implies it). Keep it short: `overlay-ui`, `cpu-first-transcription`, `macos-m1-support`.
+
+When a plan is superseded by a newer one, delete it. When a plan is fully implemented, keep it for history — do not delete it.
+
 ## Building Windows EXE
 
 See `docs/DEPLOYMENT.md`. Quick build on Windows:
