@@ -37,7 +37,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          pyinstaller --clean --noconfirm --onedir build/windows/whisper_tray.spec
+          pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
         env:
           DEVICE: cpu
           COMPUTE_TYPE: int8
@@ -93,11 +93,13 @@ jobs:
 
       - name: Build Debug Version (with console)
         run: |
-          pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir build/windows/whisper_tray.spec
+          pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
         env:
           DEVICE: cpu
           COMPUTE_TYPE: int8
           MODEL_SIZE: tiny
+          WHISPER_TRAY_DEBUG: '1'
+          WHISPER_TRAY_NAME: 'WhisperTray_DEBUG'
 
       - name: Copy ONNX files for Debug build
         shell: pwsh

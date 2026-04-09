@@ -3,6 +3,14 @@
 # PyInstaller spec file for WhisperTray
 # This file tells PyInstaller how to build the Windows executable
 
+import os
+
+# Support environment variable overrides for CI builds
+# WHISPER_TRAY_DEBUG=1 builds with console and debug settings
+# WHISPER_TRAY_NAME sets the output name
+_is_debug = os.environ.get('WHISPER_TRAY_DEBUG', '0') == '1'
+_out_name = os.environ.get('WHISPER_TRAY_NAME', 'WhisperTray')
+
 block_cipher = None
 
 # All whisper_tray modules that need to be bundled
@@ -55,14 +63,14 @@ pyz = PYZ(a.pure, cipher=block_cipher)
 exe = EXE(
     pyz,
     a.scripts,
-    name='WhisperTray',
-    debug=False,
+    name=_out_name,
+    debug=_is_debug,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,
+    console=_is_debug,
     disable_windowed_traceback=False,
     target_arch=None,
     codesign_identity=None,
@@ -77,5 +85,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='WhisperTray',
+    name=_out_name,
 )
