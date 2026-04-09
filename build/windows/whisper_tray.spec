@@ -43,8 +43,9 @@ third_party_imports = [
 
 hidden_imports = whisper_tray_modules + third_party_imports
 
-# Get the project root directory (parent of build/windows/)
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Get the project root directory
+# PyInstaller runs from project root, so we use that as our base
+project_root = os.getcwd()
 
 a = Analysis(
     [os.path.join(project_root, 'whisper_tray', 'cli.py')],
