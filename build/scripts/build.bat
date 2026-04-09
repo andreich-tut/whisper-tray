@@ -2,7 +2,7 @@
 setlocal enabledelayedexpansion
 
 REM Run from project root regardless of where this script is called
-cd /d "%~dp0.."
+cd /d "%~dp0\..\.."
 
 echo Starting WhisperTray build...
 echo.
@@ -74,7 +74,7 @@ if defined CUDA_PATH (
 REM Step 6: Build with PyInstaller
 echo [6/7] Building WhisperTray.exe...
 echo This may take a few minutes...
-pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir --collect-binaries ctranslate2 --collect-binaries faster_whisper whisper_tray/whisper_tray.py >> "%LOGFILE%" 2>&1
+pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir --collect-binaries ctranslate2 --collect-binaries faster_whisper whisper_tray\whisper_tray.py >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
     echo ERROR: Build failed - see %LOGFILE%
