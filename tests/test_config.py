@@ -20,6 +20,13 @@ def clear_env() -> Generator[None, None, None]:
         "HOTKEY",
         "AUTO_PASTE",
         "PASTE_DELAY",
+        "VAD_THRESHOLD",
+        "VAD_SILENCE_DURATION_MS",
+        "MIN_RECORDING_DURATION",
+        "SAMPLE_RATE",
+        "BEAM_SIZE",
+        "CONDITION_ON_PREVIOUS_TEXT",
+        "CPU_THREADS",
     ]
     saved = {}
     for var in env_vars:
@@ -34,12 +41,14 @@ class TestModelConfig:
     """Test model configuration."""
 
     def test_defaults(self) -> None:
-        """Test default model configuration."""
+        """Test default model configuration (CPU-first)."""
         config = ModelConfig()
-        assert config.model_size == "large-v3"
-        assert config.device == "cuda"
-        assert config.compute_type == "float16"
+        assert config.model_size == "small"
+        assert config.device == "cpu"
+        assert config.compute_type == "int8"
         assert config.language is None
+        assert config.beam_size == 1  # greedy decoding by default
+        assert config.condition_on_previous_text is False
 
     def test_custom_values(self) -> None:
         """Test custom model configuration."""
@@ -53,6 +62,11 @@ class TestModelConfig:
         assert config.device == "cpu"
         assert config.compute_type == "int8"
         assert config.language == "en"
+
+    def test_beam_size_validation(self) -> None:
+        """Test invalid beam_size is corrected."""
+        config = ModelConfig(beam_size=0)
+        assert config.beam_size == 1
 
 
 class TestHotkeyConfig:
@@ -90,6 +104,19 @@ class TestAudioConfig:
         assert config.min_recording_duration == 0.3
         assert config.vad_threshold == 0.5
         assert config.vad_silence_duration_ms == 500
+
+    def test_env_var_bindings(self) -> None:
+        """Test audio config reads from environment variables."""
+        os.environ["SAMPLE_RATE"] = "44100"
+        os.environ["MIN_RECORDING_DURATION"] = "0.5"
+        os.environ["VAD_THRESHOLD"] = "0.7"
+        os.environ["VAD_SILENCE_DURATION_MS"] = "300"
+
+        config = AudioConfig()
+        assert config.sample_rate == 44100
+        assert config.min_recording_duration == 0.5
+        assert config.vad_threshold == 0.7
+        assert config.vad_silence_duration_ms == 300
 
 
 class TestAppConfig:

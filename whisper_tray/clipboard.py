@@ -2,11 +2,13 @@
 Clipboard and paste operations module.
 
 Handles copying text to clipboard and simulating paste keyboard shortcuts.
+Cross-platform: uses Cmd+V on macOS, Ctrl+V elsewhere.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 import time
 
 import pyperclip
@@ -30,6 +32,8 @@ class ClipboardManager:
         self.paste_delay = paste_delay
         self.auto_paste = auto_paste
         self._keyboard_controller = KeyboardController()
+        # Platform-aware paste modifier: Cmd on macOS, Ctrl elsewhere
+        self._paste_modifier = Key.cmd if sys.platform == "darwin" else Key.ctrl
 
     def copy_and_paste(self, text: str) -> None:
         """
@@ -45,10 +49,10 @@ class ClipboardManager:
         # Auto-paste if enabled
         if self.auto_paste:
             time.sleep(self.paste_delay)
-            # Micro-sleep for Windows clipboard registration
+            # Micro-sleep for clipboard registration
             time.sleep(0.05)
-            # Simulate Ctrl+V using pynput
-            with self._keyboard_controller.pressed(Key.ctrl):
+            # Simulate platform-aware paste (Cmd+V on macOS, Ctrl+V elsewhere)
+            with self._keyboard_controller.pressed(self._paste_modifier):
                 self._keyboard_controller.press("v")
                 self._keyboard_controller.release("v")
             logger.info("Text auto-pasted")

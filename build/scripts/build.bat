@@ -10,6 +10,8 @@ echo.
 REM Set up log file
 set "LOGFILE=build_log.txt"
 echo Build started: %DATE% %TIME% > "%LOGFILE%"
+echo Working directory: %CD% >> "%LOGFILE%"
+echo. >> "%LOGFILE%"
 
 REM Step 1: Check Python
 echo [1/7] Checking Python...
@@ -20,27 +22,36 @@ if errorlevel 1 (
     exit /b 1
 )
 echo OK
+echo. >> "%LOGFILE%"
 
 REM Step 2: Install Dependencies
 echo [2/7] Installing dependencies...
 pip install -e ".[build]" >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
-    echo ERROR: pip install failed
+    echo ERROR: pip install failed - see %LOGFILE%
+    type "%LOGFILE%"
     pause
     exit /b 1
 )
 echo OK
+echo. >> "%LOGFILE%"
 
 REM Step 3: Clean Previous Builds
 echo [3/7] Cleaning previous builds...
-if exist build rmdir /s /q build 2>nul
 if exist dist rmdir /s /q dist 2>nul
+if exist build\windows rmdir /s /q build\windows 2>nul
+if exist build\whisper_tray rmdir /s /q build\whisper_tray 2>nul
+del /q build\*.spec 2>nul
+del /q build\*.log 2>nul
 echo OK
+echo. >> "%LOGFILE%"
 
 REM Step 4: Find faster-whisper
 echo [4/7] Finding faster-whisper...
 for /f "delims=" %%i in ('python -c "import faster_whisper, os; print(os.path.dirname(faster_whisper.__file__))"') do set "FW_DIR=%%i"
 echo Found: %FW_DIR%
+echo FW_DIR=%FW_DIR% >> "%LOGFILE%"
+echo. >> "%LOGFILE%"
 
 REM Step 5: Check CUDA
 echo [5/7] Checking CUDA...
@@ -74,14 +85,28 @@ if defined CUDA_PATH (
 REM Step 6: Build with PyInstaller
 echo [6/7] Building WhisperTray.exe...
 echo This may take a few minutes...
-pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir --collect-binaries ctranslate2 --collect-binaries faster_whisper whisper_tray\whisper_tray.py >> "%LOGFILE%" 2>&1
+echo Running PyInstaller from: %CD% >> "%LOGFILE%"
+echo Entry point: whisper_tray\cli.py >> "%LOGFILE%"
+if exist "whisper_tray\cli.py" (
+    echo Entry point file exists >> "%LOGFILE%"
+) else (
+    echo ERROR: Entry point file not found! >> "%LOGFILE%"
+    echo ERROR: whisper_tray\cli.py not found in %CD%
+    pause
+    exit /b 1
+)
+pyinstaller --clean --noconfirm --name WhisperTray --windowed --onedir --collect-binaries ctranslate2 --collect-binaries faster_whisper whisper_tray\cli.py >> "%LOGFILE%" 2>&1
 if errorlevel 1 (
     echo.
-    echo ERROR: Build failed - see %LOGFILE%
+    echo ERROR: PyInstaller build failed - see %LOGFILE%
+    echo.
+    echo Last 50 lines of log:
+    powershell -Command "Get-Content '%LOGFILE%' -Tail 50"
     pause
     exit /b 1
 )
 echo Build successful
+echo. >> "%LOGFILE%"
 
 REM Step 7: Copy ONNX assets and CUDA DLLs
 echo [7/7] Copying required files...

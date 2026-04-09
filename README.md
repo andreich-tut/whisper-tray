@@ -1,20 +1,23 @@
 # WhisperTray
 
-A Windows system tray application that provides global speech-to-text functionality using OpenAI's Whisper model. Hold a hotkey, speak, and release to instantly transcribe your voice to clipboard and paste into any text field.
+A cross-platform system tray application for global speech-to-text using OpenAI's Whisper model. Hold a hotkey, speak, and release to instantly transcribe your voice to clipboard and paste into any text field.
+
+**CPU-first design:** optimized for fast transcription on CPU. GPU acceleration is optional and opt-in.
 
 ## Features
 
-- 🎤 **Global Hotkey Activation** - Press `Ctrl+Shift+Space` (configurable) from any application to start recording
-- 📋 **Auto-Clipboard** - Transcribed text automatically copied to clipboard
-- ⚡ **Auto-Paste** - Optional automatic paste into the focused text field
-- 🔊 **VAD Filter** - Built-in voice activity detection filters silence and background noise
-- 🎨 **Status Indicator** - System tray icon changes color (gray=idle, red=recording)
-- 🚀 **GPU Accelerated** - CUDA support for fast transcription with faster-whisper
-- 📦 **Standalone EXE** - Can be built as a portable executable (no Python required)
+- 🎤 **Global Hotkey Activation** — Press `Ctrl+Shift+Space` (configurable) from any application to start recording
+- 📋 **Auto-Clipboard** — Transcribed text automatically copied to clipboard
+- ⚡ **Auto-Paste** — Optional automatic paste into the focused text field (`Cmd+V` on macOS, `Ctrl+V` elsewhere)
+- 🔊 **VAD Filter** — Built-in voice activity detection filters silence and background noise
+- 🎨 **Status Indicator** — System tray icon changes color (green=idle, red=recording, orange=processing)
+- 🚀 **CPU-Optimized** — `int8` quantization, greedy decoding, single worker thread — fast by default
+- 💻 **Cross-Platform** — Windows, Linux, macOS
+- 📦 **Standalone EXE** — Can be built as a portable executable (no Python required)
 
 ## Quick Start
 
-### Option 1: Download Pre-built EXE (Recommended)
+### Option 1: Download Pre-built EXE (Windows, Recommended)
 
 1. Go to **Releases** page and download the latest `WhisperTray-Windows.zip`
 2. Extract and run `WhisperTray.exe`
@@ -29,7 +32,8 @@ cd whisper-tray
 
 # Create and activate virtual environment
 python -m venv venv
-venv\Scripts\activate  # Windows
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows
 
 # Install and run
 pip install -e ".[dev]"
@@ -38,10 +42,10 @@ whisper-tray
 
 ## Usage
 
-1. **Start** the application - wait for "Ready" status in tray tooltip
+1. **Start** the application — the tray icon appears immediately (green = ready)
 2. **Hold** `Ctrl+Shift+Space` to begin recording (icon turns red)
 3. **Speak** clearly into your microphone
-4. **Release** the hotkey to transcribe
+4. **Release** the hotkey to transcribe (icon flashes orange while processing)
 5. Text is automatically copied to clipboard and pasted
 
 ### Tray Menu
@@ -49,27 +53,40 @@ whisper-tray
 | Option | Description |
 |--------|-------------|
 | **Language** | Set transcription language: English, Russian, or Auto-Detect |
-| **Toggle auto-paste** | Enable/disable automatic pasting |
+| **Toggle Auto-Paste** | Enable/disable automatic pasting |
 | **Exit** | Close the application |
 
 ### Icon Colors
 
 | Color | Meaning |
 |-------|---------|
-| **Gray** | Ready |
+| **Green** | Ready/idle |
 | **Red** | Recording |
-| **Yellow** | Loading/Not ready |
+| **Orange (flashing)** | Processing/transcribing |
 
 ## Configuration
 
 Create a `.env` file in the project root (or next to `WhisperTray.exe`):
 
 ```env
-# Model settings
-MODEL_SIZE=large-v3     # Options: tiny, base, small, medium, large-v3
-DEVICE=cuda             # Options: cuda, cpu
-COMPUTE_TYPE=float16    # Options: float16, int8, int8_float16
+# Model settings — CPU-first defaults
+MODEL_SIZE=small        # Options: tiny, base, small, medium, large, large-v3
+DEVICE=cpu              # Options: cpu, cuda (GPU is opt-in)
+COMPUTE_TYPE=int8       # Options: int8 (CPU), float16 (CUDA)
 LANGUAGE=en             # Options: en, ru, or omit for auto-detect
+
+# Decoding optimization
+BEAM_SIZE=1             # 1 = greedy (fast), >1 = beam search (slower, better quality)
+CONDITION_ON_PREVIOUS_TEXT=false  # false = treat each utterance independently (faster)
+
+# VAD settings
+VAD_THRESHOLD=0.5       # Voice activity detection sensitivity (0.0-1.0)
+VAD_SILENCE_DURATION_MS=500  # Min silence (ms) to mark segment boundary
+MIN_RECORDING_DURATION=0.3   # Min recording length (seconds) to process
+SAMPLE_RATE=16000       # Audio sample rate (Hz)
+
+# CPU threading
+CPU_THREADS=4           # Limit CPU threads (sets OMP_NUM_THREADS + ONNX_NUM_THREADS)
 
 # Hotkey settings
 HOTKEY=ctrl,shift,space
@@ -79,29 +96,66 @@ AUTO_PASTE=true
 PASTE_DELAY=0.1
 ```
 
+### Performance Presets
+
+Quick presets for different use cases. Set these in your `.env` file:
+
+| Preset | `MODEL_SIZE` | `DEVICE` | `COMPUTE_TYPE` | `BEAM_SIZE` | Best for |
+|--------|-------------|----------|----------------|-------------|----------|
+| **`fast`** | `base` | `cpu` | `int8` | `1` | Short commands, low latency |
+| **`balanced`** (default) | `small` | `cpu` | `int8` | `1` | General-purpose use |
+| **`accurate`** | `medium` | `cpu` | `int8` | `5` | Longer dictation, better quality |
+| **`gpu`** | `large-v3` | `cuda` | `float16` | `5` | GPU-equipped machines |
+
+Example — enable the `fast` preset:
+```env
+MODEL_SIZE=base
+DEVICE=cpu
+COMPUTE_TYPE=int8
+BEAM_SIZE=1
+```
+
 ### Model Size Recommendations
 
-| Model | VRAM | Speed | Accuracy |
-|-------|------|-------|----------|
-| `tiny` | ~1GB | Fastest | Lower |
-| `base` | ~1GB | Fast | Good |
-| `small` | ~2GB | Medium | Better |
-| `medium` | ~5GB | Slow | High |
+| Model | RAM/CPU | Speed | Accuracy |
+|-------|---------|-------|----------|
+| `tiny` | ~500MB | Fastest | Lower |
+| `base` | ~700MB | Fast | Good |
+| `small` | ~1GB | Medium | Better |
+| `medium` | ~3GB | Slow | High |
 | `large-v3` | ~10GB | Slowest | Best |
+
+## Platform-Specific Notes
+
+### macOS
+
+- Uses `Cmd+V` for auto-paste (not `Ctrl+V`)
+- Runs CPU-only (no CUDA/MPS). Use `base` or `small` model for best performance.
+- Requires `pyobjc-framework-Cocoa` and `pyobjc-framework-Quartz` (installed automatically via conditional dependencies)
+
+### Linux
+
+- Works with PulseAudio/PipeWire for microphone input
+- GPU acceleration requires NVIDIA GPU + CUDA Toolkit + cuDNN
+
+### Windows
+
+- Standalone EXE available via PyInstaller
+- GPU acceleration requires CUDA Toolkit 11.8+ and NVIDIA GPU
 
 ## Requirements
 
 ### Hardware
 
-- **GPU**: NVIDIA GPU with CUDA support (4GB+ VRAM recommended for large-v3)
-- **RAM**: 8GB+ system RAM
+- **RAM**: 4GB+ system RAM (8GB+ for medium/large models)
 - **Microphone**: Any working microphone
+- **GPU** (optional): NVIDIA GPU with CUDA support for accelerated transcription
 
 ### Software
 
-- **OS**: Windows 10/11
+- **OS**: Windows 10/11, macOS 12+, or Linux
 - **Python**: 3.12+ (for source mode)
-- **CUDA Toolkit**: 11.8 or 12.x (optional, for GPU acceleration)
+- **CUDA Toolkit**: 11.8 or 12.x (optional, only for GPU acceleration)
 
 ## Building Windows Executable
 
@@ -123,28 +177,32 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for:
 
 **"Not enough memory" or "Unanticipated host error" (MME error 7)**
 - Close memory-intensive applications
-- Switch to CPU mode: set `DEVICE=cpu` in `.env` file
-- Use a smaller model: `MODEL_SIZE=base` or `small`
+- Use a smaller model: `MODEL_SIZE=base` or `tiny`
 - Restart the application after making changes
 
-**"CUDA out of memory"**
-- Use a smaller model: `MODEL_SIZE=base` or `small`
-- Close other GPU-intensive applications
-- Switch to CPU mode: set `DEVICE=cpu` in `.env` file
-
-**Hotkey not working**
-- Run application as Administrator
-- Check if hotkey is used by another application
-- Change `HOTKEY` in `.env` file
-
 **Transcription is slow**
-- Ensure CUDA is properly installed (if using GPU mode)
-- Try a smaller model size
-- Check GPU utilization in Task Manager
+- Use the `fast` preset (see above): `MODEL_SIZE=base`, `BEAM_SIZE=1`
+- Set `CPU_THREADS` to match your CPU core count
+- If using GPU, ensure CUDA is properly installed
 
-**No tray icon appears**
+**Tray icon doesn't appear**
+- The icon appears immediately, but the model loads in the background. Wait a few seconds for the tooltip to change from "Loading model..." to "Ready".
 - Click the `^` arrow in the system tray to show hidden icons
 - Check `whisper_tray.log` for error messages
+
+**Hotkey not working**
+- Check if hotkey is used by another application
+- Change `HOTKEY` in `.env` file
+- On macOS, ensure Accessibility permissions are granted
+
+**Auto-paste not working on macOS**
+- Ensure Accessibility permissions are granted for your terminal/app
+- The app uses `Cmd+V` on macOS automatically
+
+**No text output (empty transcription)**
+- Check that your microphone is working and not muted
+- Try lowering `VAD_THRESHOLD` (e.g., `0.3`) for quieter speech
+- Try setting `LANGUAGE=en` (or your language) instead of auto-detect
 
 For more troubleshooting steps, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 

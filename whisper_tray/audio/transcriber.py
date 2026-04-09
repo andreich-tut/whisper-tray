@@ -2,6 +2,7 @@
 Transcription module.
 
 Handles loading and running the Whisper model via faster-whisper.
+CPU-first design: GPU is optional, detected upfront to avoid double-load.
 """
 
 from __future__ import annotations
@@ -11,14 +12,32 @@ import logging
 import os
 import shutil
 import sys
+import time
 from typing import Optional
 
 import numpy as np
 from faster_whisper import WhisperModel
 
-from whisper_tray.config import ModelConfig
+from whisper_tray.config import AudioConfig, ModelConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _cuda_is_available() -> bool:
+    """Check if CUDA is actually available before attempting model load."""
+    try:
+        import ctypes
+
+        # Try to load CUDA runtime libraries — fast check before model load
+        if sys.platform == "win32":
+            ctypes.CDLL("cublas64_12.dll")
+            ctypes.CDLL("cudnn64_8.dll")
+        else:
+            ctypes.CDLL("libcublas.so.12")
+            ctypes.CDLL("libcudnn.so.8")
+        return True
+    except Exception:
+        return False
 
 
 class Transcriber:
@@ -35,6 +54,12 @@ class Transcriber:
         self._model: Optional[WhisperModel] = None
         self._model_ready = False
         self._device: str = self.config.device
+
+        # Cache AudioConfig at init time (not re-created on every transcribe call)
+        self._audio_config = AudioConfig()
+
+        # Cache VAD ONNX availability check at init/model-load time
+        self._vad_onnx_available: Optional[bool] = None
 
     def ensure_faster_whisper_assets(self) -> None:
         """
@@ -58,6 +83,7 @@ class Transcriber:
             # Check if ONNX file already exists (common when running as script)
             if os.path.exists(onnx_file):
                 logger.info(f"ONNX file found at: {onnx_file}")
+                self._vad_onnx_available = True
                 return
 
             # File doesn't exist - only try to copy when bundled with PyInstaller
@@ -65,6 +91,7 @@ class Transcriber:
                 logger.warning(
                     f"ONNX file not found at {onnx_file} and not running as bundled app"
                 )
+                self._vad_onnx_available = False
                 return
 
             logger.info(
@@ -97,6 +124,7 @@ class Transcriber:
                 if os.path.exists(source_onnx):
                     shutil.copy2(source_onnx, onnx_file)
                     logger.info(f"Copied ONNX file from {source_dir} to {assets_dir}")
+                    self._vad_onnx_available = True
                     return
 
             # Also try to find any .onnx files in source directories
@@ -107,46 +135,92 @@ class Transcriber:
                             dest_onnx = os.path.join(assets_dir, f)
                             shutil.copy2(os.path.join(source_dir, f), dest_onnx)
                             logger.info(f"Copied {f} from {source_dir} to {assets_dir}")
+                            self._vad_onnx_available = True
                             return
 
             logger.warning(f"Could not find ONNX files. Checked: {possible_sources}")
             logger.warning(
                 "VAD filter may not work. Consider reinstalling faster-whisper."
             )
+            self._vad_onnx_available = False
 
         except Exception as e:
             logger.error(f"Error setting up faster-whisper assets: {e}")
+            self._vad_onnx_available = False
+
+    def _check_vad_availability(self) -> bool:
+        """Return cached VAD ONNX availability."""
+        if self._vad_onnx_available is None:
+            # Lazy check if not already determined during model load
+            fw_spec = importlib.util.find_spec("faster_whisper")
+            if fw_spec and fw_spec.origin:
+                fw_dir = os.path.dirname(fw_spec.origin)
+                vad_onnx_path = os.path.join(fw_dir, "assets", "silero_vad_v6.onnx")
+                self._vad_onnx_available = os.path.exists(vad_onnx_path)
+            else:
+                self._vad_onnx_available = False
+        return self._vad_onnx_available
 
     def load_model(self) -> None:
-        """Load the Whisper model. Tries CUDA first, falls back to CPU."""
+        """
+        Load the Whisper model.
+
+        CPU-first design: only attempt CUDA when explicitly configured
+        and CUDA libraries are actually available. Avoids double-load penalty.
+
+        Includes retry logic with exponential backoff for HuggingFace rate limits (429).
+        """
         try:
             logger.info(f"Loading Whisper model ({self.config.model_size})...")
 
-            # Try CUDA first
-            try:
-                logger.info(
-                    f"Loading model with CUDA ({self.config.device}, "
-                    f"{self.config.compute_type})..."
-                )
-                self._model = WhisperModel(
-                    self.config.model_size,
-                    device=self.config.device,
-                    compute_type=self.config.compute_type,
-                )
-                self._device = self.config.device
-                logger.info("Model loaded successfully with CUDA.")
-            except Exception as e:
-                logger.info(f"CUDA failed: {e}, falling back to CPU...")
-                self._model = WhisperModel(
-                    self.config.model_size, device="cpu", compute_type="int8"
-                )
-                self._device = "cpu"
-                logger.info("Model loaded successfully with CPU.")
+            device = self.config.device
+            compute_type = self.config.compute_type
+
+            # If device is cuda, verify CUDA is actually available
+            if device == "cuda":
+                if not _cuda_is_available():
+                    logger.info(
+                        "CUDA libraries not found on system. "
+                        "Falling back to CPU for model load."
+                    )
+                    device = "cpu"
+                    compute_type = "int8"
+                else:
+                    logger.info(
+                        f"Loading model with CUDA "
+                        f"({self.config.device}, {self.config.compute_type})..."
+                    )
+
+            # Retry logic for HuggingFace rate limiting (429 Too Many Requests)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    self._model = WhisperModel(
+                        self.config.model_size,
+                        device=device,
+                        compute_type=compute_type,
+                    )
+                    break  # Success
+                except Exception as e:
+                    error_msg = str(e)
+                    if "429" in error_msg and attempt < max_retries - 1:
+                        wait_time = 2 ** (attempt + 1) * 5  # 10s, 20s, 40s
+                        logger.warning(
+                            "HuggingFace rate limited (429). "
+                            f"Retrying in {wait_time}s "
+                            f"(attempt {attempt + 1}/{max_retries})..."
+                        )
+                        time.sleep(wait_time)
+                    else:
+                        raise  # Non-429 error or final attempt
+
+            self._device = device
+            logger.info(f"Model loaded successfully ({device}).")
 
             self._model_ready = True
             logger.info(f"Model ready (device: {self._device})")
 
-            # Ensure VAD assets are available
+            # Ensure VAD assets are available (caches result)
             self.ensure_faster_whisper_assets()
 
         except Exception as e:
@@ -176,16 +250,12 @@ class Transcriber:
         Returns:
             Transcribed text or None if failed/too short
         """
-        from whisper_tray.config import AudioConfig
-
-        audio_config = AudioConfig()
-
-        # Check duration
-        duration = len(audio_data) / audio_config.sample_rate
-        if duration < audio_config.min_recording_duration:
+        # Use cached AudioConfig (not re-created on every call)
+        duration = len(audio_data) / self._audio_config.sample_rate
+        if duration < self._audio_config.min_recording_duration:
             logger.info(
                 f"Recording too short: {duration:.2f}s < "
-                f"{audio_config.min_recording_duration}s"
+                f"{self._audio_config.min_recording_duration}s"
             )
             return None
 
@@ -200,36 +270,26 @@ class Transcriber:
         )
 
         try:
-            # Check if VAD ONNX file exists
-            fw_spec = importlib.util.find_spec("faster_whisper")
-            vad_onnx_exists = False
-            if fw_spec and fw_spec.origin:
-                fw_dir = os.path.dirname(fw_spec.origin)
-                vad_onnx_path = os.path.join(fw_dir, "assets", "silero_vad_v6.onnx")
-                vad_onnx_exists = os.path.exists(vad_onnx_path)
+            # Use cached VAD availability check (not re-checked on every call)
+            vad_available = self._check_vad_availability()
 
-            # Use VAD if available, otherwise fall back to no VAD
-            if vad_onnx_exists:
-                # Transcribe with VAD filter
-                segments, info = self._model.transcribe(
-                    audio_data,
-                    language=language_param,
-                    vad_filter=True,
-                    vad_parameters=dict(
-                        min_silence_duration_ms=audio_config.vad_silence_duration_ms,
-                        threshold=audio_config.vad_threshold,
-                    ),
+            # Build kwargs for transcribe call
+            transcribe_kwargs: dict = {
+                "language": language_param,
+                "beam_size": self.config.beam_size,
+                "condition_on_previous_text": self.config.condition_on_previous_text,
+            }
+
+            if vad_available:
+                transcribe_kwargs["vad_filter"] = True
+                transcribe_kwargs["vad_parameters"] = dict(
+                    min_silence_duration_ms=self._audio_config.vad_silence_duration_ms,
+                    threshold=self._audio_config.vad_threshold,
                 )
             else:
-                # Fallback: transcribe without VAD
-                logger.warning(
-                    "VAD ONNX file not found, transcribing without VAD filter"
-                )
-                segments, info = self._model.transcribe(
-                    audio_data,
-                    language=language_param,
-                    vad_filter=False,
-                )
+                transcribe_kwargs["vad_filter"] = False
+
+            segments, info = self._model.transcribe(audio_data, **transcribe_kwargs)
 
             # Collect all segments
             text_parts = []
@@ -239,7 +299,7 @@ class Transcriber:
             result_text = " ".join(text_parts).strip()
 
             if not result_text:
-                if vad_onnx_exists:
+                if vad_available:
                     logger.info("No speech detected (VAD filtered everything)")
                 else:
                     logger.info("No speech detected")
