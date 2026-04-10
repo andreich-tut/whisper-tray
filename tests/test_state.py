@@ -23,8 +23,8 @@ class TestAppStatePresenter:
 
         assert presentation.tray_title == "WhisperTray (CPU mode) - Ready"
         assert presentation.overlay_badge == "Ready"
-        assert presentation.overlay_primary == "Ready"
-        assert presentation.overlay_secondary == "Hold Ctrl+Shift+Space to dictate."
+        assert presentation.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
+        assert presentation.overlay_secondary is None
         assert (
             presentation.overlay_hint == "Release the hotkey to transcribe and paste."
         )
@@ -55,6 +55,54 @@ class TestAppStatePresenter:
         )
 
         assert presentation.overlay_auto_hide_seconds is None
+
+    def test_transcribed_state_shows_pasted_badge_and_transcript(self) -> None:
+        """Successful auto-paste should surface the transcript as a persistent state."""
+        presenter = AppStatePresenter()
+
+        presentation = presenter.present(
+            AppStateSnapshot(
+                state=AppState.TRANSCRIBED,
+                device="cpu",
+                transcript=(
+                    "This is a fairly long transcript that should wrap across "
+                    "multiple overlay lines so we can verify truncation."
+                ),
+                auto_pasted=True,
+            )
+        )
+
+        assert presentation.overlay_badge == "PASTED"
+        assert (
+            "\n" in presentation.overlay_primary
+            or presentation.overlay_primary.endswith("...")
+        )
+        assert presentation.overlay_secondary == (
+            "Pasted and still available in the clipboard."
+        )
+        assert presentation.overlay_hint == "Shown until clipboard changes"
+        assert presentation.overlay_auto_hide_seconds is None
+        assert presentation.icon_color == "lightgreen"
+
+    def test_transcribed_state_uses_single_line_compact_copy(self) -> None:
+        """Compact overlays should collapse transcript display to one line."""
+        presenter = AppStatePresenter(overlay_density="compact")
+
+        presentation = presenter.present(
+            AppStateSnapshot(
+                state=AppState.TRANSCRIBED,
+                device="cpu",
+                transcript=(
+                    "This transcript should be compact enough to collapse into "
+                    "a single line even when it needs truncation."
+                ),
+            )
+        )
+
+        assert presentation.overlay_badge == "COPIED"
+        assert "\n" not in presentation.overlay_primary
+        assert presentation.overlay_secondary is None
+        assert presentation.overlay_hint is None
 
     def test_processing_state_requests_flash(self) -> None:
         """Processing should mark the tray icon as flashable."""
@@ -121,6 +169,29 @@ class TestAppStatePublisher:
             AppStateSnapshot(state=AppState.LOADING_MODEL, device="cpu"),
             AppStateSnapshot(state=AppState.READY, device="cpu"),
         ]
+
+    def test_publish_snapshot_forwards_prebuilt_snapshot(self) -> None:
+        """Prebuilt snapshots should be published without losing transcript fields."""
+        initial = AppStateSnapshot(state=AppState.LOADING_MODEL, device="cpu")
+        publisher = AppStatePublisher(initial)
+        seen: list[AppStateSnapshot] = []
+
+        publisher.subscribe(seen.append)
+        publisher.publish_snapshot(
+            AppStateSnapshot(
+                state=AppState.TRANSCRIBED,
+                device="cpu",
+                transcript="hello world",
+                auto_pasted=True,
+            )
+        )
+
+        assert seen[-1] == AppStateSnapshot(
+            state=AppState.TRANSCRIBED,
+            device="cpu",
+            transcript="hello world",
+            auto_pasted=True,
+        )
 
 
 class TestFormatHotkey:

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhisperTray Ready Card Zoom</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 900px;
+        height: 280px;
+        overflow: hidden;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        background: linear-gradient(180deg, #10202d, #0d1b27);
+        font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+        color: rgba(245, 247, 249, 0.92);
+      }
+
+      .mini-card.ready {
+        width: 760px;
+        border-radius: 18px;
+        border: 1px solid rgba(148, 235, 175, 0.28);
+        background: rgba(27, 126, 63, 0.3);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
+      }
+
+      .mini-inner {
+        padding: 22px 24px 24px;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 13px;
+        border-radius: 999px;
+        border: 1px solid rgba(154, 228, 180, 0.35);
+        background: rgba(154, 228, 180, 0.14);
+        color: #9ae4b4;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .badge-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+
+      .mini-copy {
+        margin: 18px 0 6px;
+        font-size: 18px;
+        line-height: 1.4;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .mini-hint {
+        margin: 0;
+        color: rgba(236, 240, 242, 0.7);
+        font-size: 14px;
+        line-height: 1.42;
+        font-weight: 500;
+      }
+
+      .mini-copy-key {
+        display: inline-block;
+        font-family: monospace;
+        padding: 3px 6px;
+        background: #1f1f1f;
+        border-radius: 3px;
+        color: #fff;
+        line-height: 1;
+        vertical-align: baseline;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <article class="mini-card ready">
+      <div class="mini-inner">
+        <div class="badge">
+          <span class="badge-dot"></span>
+          Ready
+        </div>
+        <p class="mini-copy">
+          Hold <span class="mini-copy-key">Ctrl</span>+<span class="mini-copy-key">Shift</span>+<span class="mini-copy-key">Space</span> to dictate.
+        </p>
+        <p class="mini-hint">
+          Release the hotkey to transcribe and paste.
+        </p>
+      </div>
+    </article>
+  </body>
+</html>

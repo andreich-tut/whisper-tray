@@ -211,6 +211,7 @@ class ClipboardManager:
         """
         self.paste_delay = paste_delay
         self.auto_paste = auto_paste
+        self._last_owned_text: str | None = None
         if KeyboardController is None or Key is None:
             self._keyboard_controller = _UnavailableKeyboardController()
             self._paste_modifier = (
@@ -287,6 +288,7 @@ class ClipboardManager:
         """
         # Copy to clipboard
         pyperclip.copy(text)
+        self._last_owned_text = text
         logger.info("Text copied to clipboard")
 
         # Auto-paste if enabled
@@ -300,6 +302,17 @@ class ClipboardManager:
         # Micro-sleep for clipboard registration
         time.sleep(0.05)
         return self._auto_paste_clipboard()
+
+    def owns_clipboard(self) -> bool:
+        """Return whether WhisperTray still owns the active clipboard text."""
+        if self._last_owned_text is None:
+            return False
+
+        try:
+            return bool(pyperclip.paste() == self._last_owned_text)
+        except pyperclip.PyperclipException:
+            logger.debug("Clipboard ownership check failed", exc_info=True)
+            return False
 
     def toggle_auto_paste(self) -> bool:
         """

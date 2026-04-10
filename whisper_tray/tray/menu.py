@@ -216,16 +216,19 @@ class TrayMenu:
                 "English",
                 self._wrap_callback(self._on_set_language_en),
                 checked=lambda _: self._get_language_checked("en"),
+                radio=True,
             ),
             pystray.MenuItem(
                 "Russian",
                 self._wrap_callback(self._on_set_language_ru),
                 checked=lambda _: self._get_language_checked("ru"),
+                radio=True,
             ),
             pystray.MenuItem(
                 "Auto-Detect",
                 self._wrap_callback(self._on_set_language_auto),
                 checked=lambda _: self._get_language_checked("auto"),
+                radio=True,
             ),
         )
         overlay_position_menu = pystray.Menu(
@@ -236,6 +239,7 @@ class TrayMenu:
                     checked=lambda _, value=position: (
                         self._get_overlay_position_checked(value)
                     ),
+                    radio=True,
                 )
                 for position, label in self.OVERLAY_POSITIONS
             )
@@ -248,6 +252,7 @@ class TrayMenu:
                     checked=lambda _, value=seconds: (
                         self._get_overlay_auto_hide_checked(value)
                     ),
+                    radio=True,
                 )
                 for seconds, label in self.OVERLAY_AUTO_HIDE_OPTIONS
             )
@@ -260,6 +265,7 @@ class TrayMenu:
                     checked=lambda _, value=screen: self._get_overlay_screen_checked(
                         value
                     ),
+                    radio=True,
                 )
                 for screen, label in self.OVERLAY_SCREENS
             )
@@ -272,6 +278,7 @@ class TrayMenu:
                     checked=lambda _, value=density: self._get_overlay_density_checked(
                         value
                     ),
+                    radio=True,
                 )
                 for density, label in self.OVERLAY_DENSITIES
             )
@@ -309,17 +316,23 @@ class TrayMenu:
         Returns:
             QMenu instance with dynamic checked-state refresh support
         """
+        from PySide6.QtGui import QActionGroup
         from PySide6.QtWidgets import QMenu
 
         root_menu = QMenu()
+        action_groups: list[Any] = []
 
         language_menu = root_menu.addMenu("Language")
+        language_group = QActionGroup(language_menu)
+        language_group.setExclusive(True)
+        action_groups.append(language_group)
         self._add_qt_action(
             language_menu,
             "English",
             self._wrap_callback(self._on_set_language_en),
             checked=lambda: self._get_language_checked("en"),
             icon=icon,
+            action_group=language_group,
         )
         self._add_qt_action(
             language_menu,
@@ -327,6 +340,7 @@ class TrayMenu:
             self._wrap_callback(self._on_set_language_ru),
             checked=lambda: self._get_language_checked("ru"),
             icon=icon,
+            action_group=language_group,
         )
         self._add_qt_action(
             language_menu,
@@ -334,6 +348,7 @@ class TrayMenu:
             self._wrap_callback(self._on_set_language_auto),
             checked=lambda: self._get_language_checked("auto"),
             icon=icon,
+            action_group=language_group,
         )
 
         self._add_qt_action(
@@ -354,6 +369,9 @@ class TrayMenu:
         )
 
         overlay_position_menu = overlay_menu.addMenu("Position")
+        overlay_position_group = QActionGroup(overlay_position_menu)
+        overlay_position_group.setExclusive(True)
+        action_groups.append(overlay_position_group)
         for position, label in self.OVERLAY_POSITIONS:
             self._add_qt_action(
                 overlay_position_menu,
@@ -361,9 +379,13 @@ class TrayMenu:
                 self._wrap_overlay_position_callback(position),
                 checked=self._qt_overlay_position_checked(position),
                 icon=icon,
+                action_group=overlay_position_group,
             )
 
         overlay_screen_menu = overlay_menu.addMenu("Display")
+        overlay_screen_group = QActionGroup(overlay_screen_menu)
+        overlay_screen_group.setExclusive(True)
+        action_groups.append(overlay_screen_group)
         for screen, label in self.OVERLAY_SCREENS:
             self._add_qt_action(
                 overlay_screen_menu,
@@ -371,9 +393,13 @@ class TrayMenu:
                 self._wrap_overlay_screen_callback(screen),
                 checked=self._qt_overlay_screen_checked(screen),
                 icon=icon,
+                action_group=overlay_screen_group,
             )
 
         overlay_auto_hide_menu = overlay_menu.addMenu("Ready Auto-Hide")
+        overlay_auto_hide_group = QActionGroup(overlay_auto_hide_menu)
+        overlay_auto_hide_group.setExclusive(True)
+        action_groups.append(overlay_auto_hide_group)
         for seconds, label in self.OVERLAY_AUTO_HIDE_OPTIONS:
             self._add_qt_action(
                 overlay_auto_hide_menu,
@@ -381,9 +407,13 @@ class TrayMenu:
                 self._wrap_overlay_auto_hide_callback(seconds),
                 checked=self._qt_overlay_auto_hide_checked(seconds),
                 icon=icon,
+                action_group=overlay_auto_hide_group,
             )
 
         overlay_density_menu = overlay_menu.addMenu("View")
+        overlay_density_group = QActionGroup(overlay_density_menu)
+        overlay_density_group.setExclusive(True)
+        action_groups.append(overlay_density_group)
         for density, label in self.OVERLAY_DENSITIES:
             self._add_qt_action(
                 overlay_density_menu,
@@ -391,6 +421,7 @@ class TrayMenu:
                 self._wrap_overlay_density_callback(density),
                 checked=self._qt_overlay_density_checked(density),
                 icon=icon,
+                action_group=overlay_density_group,
             )
 
         self._add_qt_action(
@@ -413,6 +444,7 @@ class TrayMenu:
             sync_menu(root_menu)
 
         setattr(root_menu, "_sync_checkmarks", sync_callback)
+        setattr(root_menu, "_action_groups", action_groups)
         root_menu.aboutToShow.connect(sync_callback)
         return root_menu
 
@@ -424,6 +456,7 @@ class TrayMenu:
         *,
         checked: Callable[[], bool] | None = None,
         icon: object,
+        action_group: Any | None = None,
     ) -> Any:
         """Add a Qt action and keep its checked state refreshable."""
         action = menu.addAction(label)
@@ -431,5 +464,7 @@ class TrayMenu:
             action.setCheckable(True)
             action.setChecked(bool(checked()))
             setattr(action, "_checked_callback", checked)
+        if action_group is not None:
+            action_group.addAction(action)
         action.triggered.connect(lambda _=False: callback(icon, None))
         return action

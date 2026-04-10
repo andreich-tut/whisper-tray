@@ -25,13 +25,21 @@ from whisper_tray.overlay.pyside_overlay import (
     _WS_EX_NOACTIVATE,
     _WS_EX_TOOLWINDOW,
     _WS_EX_TRANSPARENT,
+    BlobWidget,
     apply_windows_overlay_styles,
     enable_windows_per_monitor_dpi_awareness,
+    geometry_contains_geometry,
+    resolve_blob_visual_spec,
+    resolve_blob_widget_size,
     resolve_overlay_coordinates,
     resolve_overlay_layout,
+    resolve_overlay_reposition_screen,
     resolve_overlay_screen,
     resolve_overlay_theme,
     resolve_windows_overlay_ex_style,
+    should_use_card_shadow,
+    should_use_window_opacity_fade,
+    update_last_resolved_screen,
 )
 from whisper_tray.state import AppState, AppStatePresenter, AppStateSnapshot
 
@@ -44,12 +52,14 @@ class RecordingRuntime:
         commands: Any,
         position: str,
         screen_target: str,
-        seen: list[tuple[str, str, Any]],
+        style: str,
+        seen: list[tuple[str, str, str, Any]],
         received: threading.Event,
     ) -> None:
         self._commands = commands
         self._position = position
         self._screen_target = screen_target
+        self._style = style
         self._seen = seen
         self._received = received
 
@@ -62,7 +72,7 @@ class RecordingRuntime:
                 return
 
             self._seen.append(
-                (self._position, self._screen_target, command.presentation)
+                (self._position, self._screen_target, self._style, command.presentation)
             )
             self._received.set()
 
@@ -75,10 +85,12 @@ class FailingRuntime:
         commands: Any,
         position: str,
         screen_target: str,
+        style: str,
     ) -> None:
         self._commands = commands
         self._position = position
         self._screen_target = screen_target
+        self._style = style
 
     def run(self, startup_callback: Any) -> None:
         """Signal startup failure and raise like a broken Qt runtime."""
@@ -185,12 +197,40 @@ class FakeGeometry:
         return self._height
 
 
+class FakeScreen:
+    """Minimal QScreen-like object for screen fallback tests."""
+
+    def __init__(
+        self,
+        *,
+        geometry: FakeGeometry,
+        available_geometry: FakeGeometry | None = None,
+        device_pixel_ratio: float = 1.0,
+    ) -> None:
+        self._geometry = geometry
+        self._available_geometry = available_geometry or geometry
+        self._device_pixel_ratio = device_pixel_ratio
+
+    def geometry(self) -> FakeGeometry:
+        """Return the full screen geometry."""
+        return self._geometry
+
+    def availableGeometry(self) -> FakeGeometry:
+        """Return the work-area geometry."""
+        return self._available_geometry
+
+    def devicePixelRatio(self) -> float:
+        """Return the fake screen DPI scale."""
+        return self._device_pixel_ratio
+
+
 def test_create_overlay_controller_returns_null_when_disabled() -> None:
     """Disabled overlay should not start any UI backend."""
     controller = create_overlay_controller(
         False,
         position="top-left",
         screen_target="primary",
+        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -210,6 +250,7 @@ def test_create_overlay_controller_falls_back_when_backend_module_missing(
         True,
         position="top-left",
         screen_target="primary",
+        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -228,6 +269,7 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
         True,
         position="bottom-right",
         screen_target="primary",
+        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -235,18 +277,20 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
 
 def test_threaded_overlay_controller_forwards_state_updates() -> None:
     """Enabled overlays should forward presentations to the runtime thread."""
-    seen: list[tuple[str, str, object]] = []
+    seen: list[tuple[str, str, str, object]] = []
     received = threading.Event()
 
     def runtime_factory(
         commands: object,
         position: str,
         screen_target: str,
+        style: str,
     ) -> RecordingRuntime:
         return RecordingRuntime(
             commands,
             position,
             screen_target,
+            style,
             seen,
             received,
         )
@@ -255,6 +299,7 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
         True,
         position="top-left",
         screen_target="cursor",
+        style="blob",
         runtime_factory=runtime_factory,
     )
     presenter = AppStatePresenter()
@@ -267,7 +312,7 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
     assert received.wait(timeout=1.0) is True
     controller.close()
 
-    assert seen == [("top-left", "cursor", presentation)]
+    assert seen == [("top-left", "cursor", "blob", presentation)]
 
 
 def test_create_overlay_controller_falls_back_when_runtime_startup_fails() -> None:
@@ -276,6 +321,7 @@ def test_create_overlay_controller_falls_back_when_runtime_startup_fails() -> No
         True,
         position="top-left",
         screen_target="primary",
+        style="blob",
         runtime_factory=FailingRuntime,
     )
 
@@ -297,8 +343,8 @@ def test_resolve_overlay_screen_prefers_cursor_when_requested() -> None:
     assert selected is cursor
 
 
-def test_resolve_overlay_screen_falls_back_to_primary() -> None:
-    """Missing cursor geometry should fall back to the primary display."""
+def test_resolve_overlay_screen_returns_none_when_cursor_lookup_fails() -> None:
+    """Cursor mode should let richer fallback logic happen in reposition code."""
     primary = object()
 
     selected = resolve_overlay_screen(
@@ -308,7 +354,55 @@ def test_resolve_overlay_screen_falls_back_to_primary() -> None:
         screens=[primary],
     )
 
+    assert selected is None
+
+
+def test_resolve_overlay_reposition_screen_reuses_last_cursor_screen() -> None:
+    """Cursor mode should reuse the last resolved screen when lookups go missing."""
+    primary = FakeScreen(geometry=FakeGeometry(0, 0, 1920, 1080))
+    previous_cursor = FakeScreen(geometry=FakeGeometry(1920, 0, 1920, 1080))
+
+    selected = resolve_overlay_reposition_screen(
+        screen_target="cursor",
+        primary_screen=primary,
+        cursor_screen=None,
+        screens=[primary, previous_cursor],
+        last_resolved_screen=previous_cursor,
+        current_geometry=None,
+    )
+
+    assert selected is previous_cursor
+
+
+def test_resolve_overlay_reposition_screen_falls_back_to_primary_last() -> None:
+    """Primary fallback should only happen after cursor and sticky-screen misses."""
+    primary = FakeScreen(geometry=FakeGeometry(0, 0, 1920, 1080))
+
+    selected = resolve_overlay_reposition_screen(
+        screen_target="cursor",
+        primary_screen=primary,
+        cursor_screen=None,
+        screens=[primary],
+        last_resolved_screen=None,
+        current_geometry=None,
+    )
+
     assert selected is primary
+
+
+def test_update_last_resolved_screen_invalidates_anchor_on_screen_change() -> None:
+    """Changing screens should clear the cached anchor so reposition can move again."""
+    first_screen = object()
+    second_screen = object()
+
+    last_screen, last_anchor = update_last_resolved_screen(
+        last_resolved_screen=first_screen,
+        new_screen=second_screen,
+        last_anchor=(100, 200),
+    )
+
+    assert last_screen is second_screen
+    assert last_anchor is None
 
 
 def test_resolve_overlay_coordinates_places_top_left_with_margin() -> None:
@@ -355,12 +449,65 @@ def test_resolve_overlay_layout_expands_error_cards() -> None:
     )
 
 
+def test_resolve_overlay_layout_keeps_ready_card_compact() -> None:
+    """Ready cards should stay small enough for unobtrusive corner status."""
+    presenter = AppStatePresenter()
+    ready = presenter.present(AppStateSnapshot(state=AppState.READY, device="cpu"))
+    compact = AppStatePresenter(overlay_density="compact").present(
+        AppStateSnapshot(state=AppState.READY, device="cpu")
+    )
+
+    ready_layout = resolve_overlay_layout(ready)
+    compact_layout = resolve_overlay_layout(compact)
+
+    assert ready_layout.max_width <= 400
+    assert compact_layout.max_width <= 300
+
+
+def test_geometry_contains_geometry_uses_overlay_center() -> None:
+    """Geometry fallback should identify the screen containing the overlay center."""
+    outer = FakeGeometry(0, 0, 1920, 1080)
+    inner = FakeGeometry(900, 400, 200, 120)
+
+    assert geometry_contains_geometry(outer, inner) is True
+
+
+def test_resolve_blob_visual_spec_maps_transcribed_state() -> None:
+    """The transcribed state should use the calm green blob parameters."""
+    spec = resolve_blob_visual_spec(AppState.TRANSCRIBED)
+
+    assert spec.base_radius == 65
+    assert spec.amplitude_scale == 0.05
+    assert spec.speed_scale == 0.35
+    assert spec.saturation == 0.6
+    assert spec.dim_alpha == 90
+    assert spec.fixed_hue == 120
+
+
+def test_resolve_blob_widget_size_scales_for_high_dpi_screens() -> None:
+    """Blob widgets should scale with the screen device pixel ratio."""
+    assert resolve_blob_widget_size(1.0) == 300
+    assert resolve_blob_widget_size(1.5) == 450
+
+
 def test_resolve_overlay_theme_falls_back_to_neutral_palette() -> None:
     """Unknown colors should still produce a readable default overlay theme."""
     theme = resolve_overlay_theme("mystery")
 
     assert theme.accent == "#e8eef6"
     assert theme.accent_soft == "rgba(232, 238, 246, 0.12)"
+
+
+def test_windows_overlay_uses_window_opacity_fade() -> None:
+    """Windows layered overlays should animate the top-level window directly."""
+    assert should_use_window_opacity_fade("Windows") is True
+    assert should_use_window_opacity_fade("Linux") is False
+
+
+def test_windows_overlay_skips_card_shadow() -> None:
+    """Windows card overlays should avoid the fragile drop-shadow effect."""
+    assert should_use_card_shadow("Windows") is False
+    assert should_use_card_shadow("Linux") is True
 
 
 def test_enable_windows_per_monitor_dpi_awareness_prefers_v2_context() -> None:
@@ -462,3 +609,38 @@ def test_apply_windows_overlay_styles_returns_false_without_required_api() -> No
     applied = apply_windows_overlay_styles(1234, user32=object())
 
     assert applied is False
+
+
+def test_blob_widget_paint_smoke() -> None:
+    """Blob rendering should be able to paint into an offscreen surface."""
+    if not hasattr(BlobWidget, "render"):
+        pytest.skip("PySide6 is unavailable in this test environment.")
+
+    pyside6 = pytest.importorskip("PySide6")
+    del pyside6
+    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
+    qtgui = pytest.importorskip("PySide6.QtGui")
+
+    _app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
+    del _app
+    widget = BlobWidget()
+    widget.set_visual_state(AppState.RECORDING, device_pixel_ratio=1.0)
+    widget.advance_animation()
+    image_format = (
+        qtgui.QImage.Format.Format_ARGB32_Premultiplied
+        if hasattr(qtgui.QImage, "Format")
+        else qtgui.QImage.Format_ARGB32_Premultiplied
+    )
+    image = qtgui.QImage(
+        widget.size(),
+        image_format,
+    )
+    image.fill(0)
+    painter = qtgui.QPainter(image)
+    try:
+        widget.render(painter)
+    finally:
+        painter.end()
+        widget.close()
+
+    assert not image.isNull()

@@ -56,7 +56,7 @@ class OverlayRuntime(Protocol):
 
 
 OverlayRuntimeFactory = Callable[
-    [queue.Queue[OverlayCommand], str, str],
+    [queue.Queue[OverlayCommand], str, str, str],
     OverlayRuntime,
 ]
 
@@ -86,6 +86,7 @@ class ThreadedOverlayController:
         *,
         position: str,
         screen_target: str,
+        style: str,
     ) -> None:
         self._commands: queue.Queue[OverlayCommand] = queue.Queue()
         self._closed = threading.Event()
@@ -93,7 +94,7 @@ class ThreadedOverlayController:
         self._startup_succeeded = False
         self._thread = threading.Thread(
             target=self._run_runtime,
-            args=(runtime_factory, position, screen_target),
+            args=(runtime_factory, position, screen_target, style),
             daemon=True,
             name="overlay-ui",
         )
@@ -110,10 +111,11 @@ class ThreadedOverlayController:
         runtime_factory: OverlayRuntimeFactory,
         position: str,
         screen_target: str,
+        style: str,
     ) -> None:
         """Create and run the overlay backend."""
         try:
-            runtime = runtime_factory(self._commands, position, screen_target)
+            runtime = runtime_factory(self._commands, position, screen_target, style)
             runtime.run(self._mark_startup)
             self._mark_startup(True)
         except Exception:
@@ -153,6 +155,7 @@ def create_overlay_controller(
     *,
     position: str = "bottom-right",
     screen_target: str = "primary",
+    style: str = "blob",
     runtime_factory: OverlayRuntimeFactory | None = None,
 ) -> OverlayController:
     """
@@ -187,6 +190,7 @@ def create_overlay_controller(
             factory,
             position=position,
             screen_target=screen_target,
+            style=style,
         )
     except Exception:
         logger.warning(

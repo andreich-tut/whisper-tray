@@ -88,10 +88,12 @@ class FakeMenuItem:
         text: str,
         action: object,
         checked: object | None = None,
+        radio: bool = False,
     ) -> None:
         self.text = text
         self.action = action
         self.checked = checked
+        self.radio = radio
 
 
 class FakeQtSignal:
@@ -139,6 +141,23 @@ class FakeQtAction:
     def isChecked(self) -> bool:
         """Expose the current checked state for assertions."""
         return self._checked
+
+
+class FakeQtActionGroup:
+    """Small QActionGroup stand-in for menu exclusivity tests."""
+
+    def __init__(self, parent: object) -> None:
+        self.parent = parent
+        self.actions: list[FakeQtAction] = []
+        self.exclusive = False
+
+    def addAction(self, action: FakeQtAction) -> None:
+        """Record actions registered with the group."""
+        self.actions.append(action)
+
+    def setExclusive(self, value: bool) -> None:
+        """Record whether the group is exclusive."""
+        self.exclusive = value
 
 
 class FakeQtMenu:
@@ -197,6 +216,7 @@ def _build_app(
             screen=overlay_screen,
             auto_hide_seconds=overlay_auto_hide_seconds,
             density=overlay_density,
+            overlay_style="card",
         ),
         ui=SimpleNamespace(tray_backend=tray_backend),
     )
@@ -251,6 +271,7 @@ class TestWhisperTrayApp:
             "Bottom Left",
             "Bottom Right",
         ]
+        assert all(item.radio is True for item in position_menu)
         assert position_menu[0].checked(None) is True
         assert position_menu[-1].checked(None) is False
         assert display_item.text == "Display"
@@ -258,6 +279,7 @@ class TestWhisperTrayApp:
             "Primary Display",
             "Cursor Display",
         ]
+        assert all(item.radio is True for item in display_menu)
         assert display_menu[0].checked(None) is False
         assert display_menu[1].checked(None) is True
         assert auto_hide_item.text == "Ready Auto-Hide"
@@ -267,10 +289,12 @@ class TestWhisperTrayApp:
             "3 Seconds",
             "5 Seconds",
         ]
+        assert all(item.radio is True for item in auto_hide_menu)
         assert auto_hide_menu[0].checked(None) is True
         assert auto_hide_menu[1].checked(None) is False
         assert view_item.text == "View"
         assert [item.text for item in view_menu] == ["Detailed", "Compact"]
+        assert all(item.radio is True for item in view_menu)
         assert view_menu[0].checked(None) is False
         assert view_menu[1].checked(None) is True
 
@@ -279,7 +303,9 @@ class TestWhisperTrayApp:
     ) -> None:
         """Qt tray menus should mirror the same dynamic overlay controls."""
         fake_qtwidgets = SimpleNamespace(QMenu=FakeQtMenu)
+        fake_qtgui = SimpleNamespace(QActionGroup=FakeQtActionGroup)
         monkeypatch.setitem(sys.modules, "PySide6", SimpleNamespace())
+        monkeypatch.setitem(sys.modules, "PySide6.QtGui", fake_qtgui)
         monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", fake_qtwidgets)
 
         state: dict[str, Any] = {
@@ -326,6 +352,14 @@ class TestWhisperTrayApp:
             and auto_hide_menu.actions()[0].isChecked() is True
         )
         assert view_menu is not None and view_menu.actions()[1].isChecked() is True
+        action_groups = getattr(menu, "_action_groups")
+        assert len(action_groups) == 5
+        assert all(group.exclusive is True for group in action_groups)
+        assert [action.text() for action in action_groups[0].actions] == [
+            "English",
+            "Russian",
+            "Auto-Detect",
+        ]
 
     def test_update_tray_icon_sets_ready_title(self) -> None:
         """Ready state should update both icon image and title."""
@@ -373,7 +407,10 @@ class TestWhisperTrayApp:
 
         app._on_state_changed(AppStateSnapshot(state=AppState.READY, device="cpu"))
 
-        assert overlay.presentations[0].overlay_primary == "Ready"
+        assert (
+            overlay.presentations[0].overlay_primary
+            == "Hold Ctrl+Shift+Space to dictate."
+        )
         assert app._tray_icon_ref is not None
         assert app._tray_icon_ref.title == "WhisperTray (CPU mode) - Ready"
 
@@ -381,15 +418,16 @@ class TestWhisperTrayApp:
         """Enabling the overlay should create a live controller and refresh the menu."""
         app = _build_app(state=AppState.READY)
         live_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[tuple[bool, str, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
+            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target))
+            created.append((enabled, position, screen_target, style))
             return live_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -401,10 +439,10 @@ class TestWhisperTrayApp:
         app._on_toggle_overlay(app._tray_icon_ref, None)
 
         assert app.config.overlay.enabled is True
-        assert created == [(True, "bottom-right", "primary")]
+        assert created == [(True, "bottom-right", "primary", "card")]
         assert original_overlay.closed is True
         pres = live_overlay.presentations[0]
-        assert pres.overlay_primary == "Ready"
+        assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
         assert app._overlay is live_overlay
         msg = "Overlay enabled (Bottom Right)"
         assert app._tray_icon_ref.notifications == [msg]
@@ -418,7 +456,9 @@ class TestWhisperTrayApp:
 
         app._tray_runtime = SimpleNamespace(
             create_overlay_controller=(
-                lambda enabled, *, position, screen_target: NullOverlayController()
+                lambda enabled, *, position, screen_target, style: (
+                    NullOverlayController()
+                )
             )
         )
 
@@ -438,15 +478,16 @@ class TestWhisperTrayApp:
         """Changing overlay position should restart the live overlay."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[tuple[bool, str, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
+            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target))
+            created.append((enabled, position, screen_target, style))
             return replacement_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -458,10 +499,10 @@ class TestWhisperTrayApp:
         app._on_set_overlay_position("top-left", app._tray_icon_ref, None)
 
         assert app.config.overlay.position == "top-left"
-        assert created == [(True, "top-left", "primary")]
+        assert created == [(True, "top-left", "primary", "card")]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
-        assert pres.overlay_primary == "Ready"
+        assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
         assert app._overlay is replacement_overlay
         assert app._tray_icon_ref.notifications == ["Overlay position: Top Left"]
         assert app._tray_icon_ref.menu_updates == 1
@@ -470,15 +511,16 @@ class TestWhisperTrayApp:
         """Changing overlay display should restart the live overlay on that target."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[tuple[bool, str, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
+            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target))
+            created.append((enabled, position, screen_target, style))
             return replacement_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -490,10 +532,10 @@ class TestWhisperTrayApp:
         app._on_set_overlay_screen("cursor", app._tray_icon_ref, None)
 
         assert app.config.overlay.screen == "cursor"
-        assert created == [(True, "bottom-right", "cursor")]
+        assert created == [(True, "bottom-right", "cursor", "card")]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
-        assert pres.overlay_primary == "Ready"
+        assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
         assert app._overlay is replacement_overlay
         assert app._tray_icon_ref.notifications == ["Overlay display: Cursor Display"]
         assert app._tray_icon_ref.menu_updates == 1
@@ -619,6 +661,7 @@ class TestWhisperTrayApp:
                 *,
                 position: str,
                 screen_target: str,
+                style: str,
             ) -> Any:
                 """No-op overlay controller creation."""
                 return NullOverlayController()
@@ -637,6 +680,8 @@ class TestWhisperTrayApp:
         )
         app._start_worker = lambda: None  # type: ignore[method-assign]
         app._stop_worker = lambda: None  # type: ignore[method-assign]
+        app._start_clipboard_monitor = lambda: None  # type: ignore[method-assign]
+        app._stop_clipboard_monitor = lambda: None  # type: ignore[method-assign]
         app._setup_hotkey_listener = lambda: None  # type: ignore[method-assign]
         app._load_model_in_background = lambda: None  # type: ignore[method-assign]
         app._hotkey_listener = None

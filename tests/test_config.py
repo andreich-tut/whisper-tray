@@ -41,6 +41,7 @@ def _clear_env() -> Generator[None, None, None]:
         "OVERLAY_POSITION",
         "OVERLAY_SCREEN",
         "OVERLAY_DENSITY",
+        "OVERLAY_STYLE",
         "TRAY_BACKEND",
     ]
     saved = {}
@@ -167,6 +168,7 @@ class TestOverlayConfig:
         assert config.position == "bottom-right"
         assert config.screen == "primary"
         assert config.density == "detailed"
+        assert config.overlay_style == "card"
 
     def test_env_var_bindings(self) -> None:
         """Overlay config should read environment variables."""
@@ -175,6 +177,7 @@ class TestOverlayConfig:
         os.environ["OVERLAY_POSITION"] = "top-left"
         os.environ["OVERLAY_SCREEN"] = "cursor"
         os.environ["OVERLAY_DENSITY"] = "compact"
+        os.environ["OVERLAY_STYLE"] = "blob"
 
         config = OverlayConfig()
         assert config.enabled is True
@@ -182,6 +185,7 @@ class TestOverlayConfig:
         assert config.position == "top-left"
         assert config.screen == "cursor"
         assert config.density == "compact"
+        assert config.overlay_style == "blob"
 
     def test_invalid_position_falls_back_to_bottom_right(self) -> None:
         """Unknown positions should degrade to the default corner."""
@@ -200,6 +204,12 @@ class TestOverlayConfig:
         config = OverlayConfig(screen="secondary")
 
         assert config.screen == "primary"
+
+    def test_invalid_style_falls_back_to_blob(self) -> None:
+        """Unknown overlay styles should degrade to the card presentation."""
+        config = OverlayConfig(overlay_style="glass")
+
+        assert config.overlay_style == "card"
 
 
 class TestUiConfig:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import html
+import math
 import platform
 import queue
+import time
 from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
@@ -30,6 +33,19 @@ _PROCESS_PER_MONITOR_DPI_AWARE = 2
 _ERROR_ACCESS_DENIED = 5
 _HRESULT_ACCESS_DENIED = -2147024891
 _HRESULT_ACCESS_DENIED_UNSIGNED = 0x80070005
+_BLOB_WIDGET_LOGICAL_SIZE = 300
+_BLOB_BLUR_RADIUS = 20
+
+try:
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtGui import QColor, QPainter, QPainterPath, QRadialGradient
+    from PySide6.QtWidgets import QGraphicsBlurEffect, QWidget
+
+    _PYSIDE6_AVAILABLE = True
+except ImportError:
+    QPointF = Qt = QColor = QPainter = QPainterPath = QRadialGradient = None
+    QGraphicsBlurEffect = QWidget = object
+    _PYSIDE6_AVAILABLE = False
 
 
 @dataclass(frozen=True)
@@ -40,6 +56,7 @@ class OverlayTheme:
     accent_soft: str
     border: str
     background: str
+    badge_border: str
     body: str = "rgba(255, 255, 255, 0.88)"
     hint: str = "rgba(255, 255, 255, 0.62)"
 
@@ -56,43 +73,79 @@ class OverlayLayout:
     padding_vertical: int
     spacing: int
     badge_radius: int
+    badge_padding_horizontal: int
+    badge_padding_vertical: int
+    badge_spacing: int
     primary_size: int
     secondary_size: int
     hint_size: int
 
 
 DETAILED_LAYOUT = OverlayLayout(
-    min_width=308,
-    max_width=420,
-    radius=22,
-    accent_width=6,
-    padding_horizontal=20,
-    padding_vertical=18,
-    spacing=8,
-    badge_radius=10,
+    min_width=320,
+    max_width=400,
+    radius=18,
+    accent_width=0,
+    padding_horizontal=18,
+    padding_vertical=16,
+    spacing=6,
+    badge_radius=12,
+    badge_padding_horizontal=10,
+    badge_padding_vertical=6,
+    badge_spacing=7,
     primary_size=14,
+    secondary_size=11,
+    hint_size=10,
+)
+
+COMPACT_LAYOUT = OverlayLayout(
+    min_width=240,
+    max_width=300,
+    radius=16,
+    accent_width=0,
+    padding_horizontal=14,
+    padding_vertical=12,
+    spacing=5,
+    badge_radius=10,
+    badge_padding_horizontal=9,
+    badge_padding_vertical=5,
+    badge_spacing=6,
+    primary_size=12,
     secondary_size=10,
     hint_size=9,
 )
 
-COMPACT_LAYOUT = OverlayLayout(
-    min_width=244,
-    max_width=300,
-    radius=18,
-    accent_width=5,
-    padding_horizontal=16,
-    padding_vertical=14,
-    spacing=6,
-    badge_radius=9,
-    primary_size=13,
-    secondary_size=10,
-    hint_size=9,
-)
+
+@dataclass(frozen=True)
+class BlobVisualSpec:
+    """Animation and color tokens for the blob overlay."""
+
+    base_radius: float
+    amplitude_scale: float
+    speed_scale: float
+    saturation: float
+    dim_alpha: int
+    fixed_hue: float | None = None
 
 
 def is_windows_platform(system_name: str | None = None) -> bool:
     """Return whether the current runtime should use Win32 overlay polish."""
     return (system_name or platform.system()) == "Windows"
+
+
+def should_use_window_opacity_fade(system_name: str | None = None) -> bool:
+    """Return whether overlay fades should animate the top-level window."""
+    return is_windows_platform(system_name)
+
+
+def should_use_card_shadow(system_name: str | None = None) -> bool:
+    """Return whether the card overlay should use a drop shadow effect."""
+    return not is_windows_platform(system_name)
+
+
+def should_disable_native_window_shadow(system_name: str | None = None) -> bool:
+    """Return whether passive overlay windows should opt out of native shadows."""
+    return is_windows_platform(system_name)
 
 
 def resolve_windows_overlay_ex_style(current_style: int) -> int:
@@ -223,15 +276,9 @@ def resolve_overlay_screen(
     screens: Sequence[Any],
 ) -> Any | None:
     """Choose the screen the overlay should render on."""
-    if screen_target == "cursor" and cursor_screen is not None:
+    if screen_target == "cursor":
         return cursor_screen
-    if primary_screen is not None:
-        return primary_screen
-    if cursor_screen is not None:
-        return cursor_screen
-    if screens:
-        return screens[0]
-    return None
+    return primary_screen
 
 
 def resolve_overlay_coordinates(
@@ -269,6 +316,152 @@ def resolve_overlay_layout(presentation: AppStatePresentation) -> OverlayLayout:
     return layout
 
 
+def resolve_blob_visual_spec(state: AppState) -> BlobVisualSpec:
+    """Map app states to blob animation parameters."""
+    specs = {
+        AppState.LOADING_MODEL: BlobVisualSpec(
+            base_radius=60,
+            amplitude_scale=0.06,
+            speed_scale=0.4,
+            saturation=0.3,
+            dim_alpha=100,
+        ),
+        AppState.READY: BlobVisualSpec(
+            base_radius=55,
+            amplitude_scale=0.04,
+            speed_scale=0.3,
+            saturation=0.2,
+            dim_alpha=80,
+        ),
+        AppState.RECORDING: BlobVisualSpec(
+            base_radius=110,
+            amplitude_scale=0.22,
+            speed_scale=1.0,
+            saturation=0.9,
+            dim_alpha=140,
+        ),
+        AppState.PROCESSING: BlobVisualSpec(
+            base_radius=80,
+            amplitude_scale=0.10,
+            speed_scale=0.6,
+            saturation=0.7,
+            dim_alpha=120,
+            fixed_hue=30,
+        ),
+        AppState.TRANSCRIBED: BlobVisualSpec(
+            base_radius=65,
+            amplitude_scale=0.05,
+            speed_scale=0.35,
+            saturation=0.6,
+            dim_alpha=90,
+            fixed_hue=120,
+        ),
+        AppState.ERROR: BlobVisualSpec(
+            base_radius=70,
+            amplitude_scale=0.08,
+            speed_scale=0.5,
+            saturation=0.8,
+            dim_alpha=130,
+            fixed_hue=0,
+        ),
+    }
+    return specs[state]
+
+
+def resolve_blob_widget_size(device_pixel_ratio: float) -> int:
+    """Scale the logical blob widget size for the active screen DPI."""
+    return max(1, int(round(_BLOB_WIDGET_LOGICAL_SIZE * max(device_pixel_ratio, 1.0))))
+
+
+def _geometry_bounds(geometry: Any) -> tuple[float, float, float, float]:
+    """Extract a rect-like geometry into numeric bounds."""
+    return (
+        float(geometry.x()),
+        float(geometry.y()),
+        float(geometry.width()),
+        float(geometry.height()),
+    )
+
+
+def geometry_contains_geometry(outer_geometry: Any, inner_geometry: Any) -> bool:
+    """Return whether the inner geometry's center sits inside the outer geometry."""
+    outer_x, outer_y, outer_width, outer_height = _geometry_bounds(outer_geometry)
+    inner_x, inner_y, inner_width, inner_height = _geometry_bounds(inner_geometry)
+    center_x = inner_x + (inner_width / 2)
+    center_y = inner_y + (inner_height / 2)
+    return (
+        outer_x <= center_x <= outer_x + outer_width
+        and outer_y <= center_y <= outer_y + outer_height
+    )
+
+
+def resolve_screen_from_geometry(
+    geometry: Any | None,
+    screens: Sequence[Any],
+) -> Any | None:
+    """Find the screen that currently contains the overlay geometry."""
+    if geometry is None:
+        return None
+
+    for screen in screens:
+        screen_geometry_getter = getattr(screen, "geometry", None)
+        if callable(screen_geometry_getter):
+            screen_geometry = screen_geometry_getter()
+        else:
+            available_geometry_getter = getattr(screen, "availableGeometry", None)
+            if not callable(available_geometry_getter):
+                continue
+            screen_geometry = available_geometry_getter()
+        if geometry_contains_geometry(screen_geometry, geometry):
+            return screen
+    return None
+
+
+def update_last_resolved_screen(
+    *,
+    last_resolved_screen: Any | None,
+    new_screen: Any | None,
+    last_anchor: object | None,
+) -> tuple[Any | None, object | None]:
+    """Track the last cursor/primary lookup result and invalidate stale anchors."""
+    if new_screen is None:
+        return last_resolved_screen, last_anchor
+    if new_screen is last_resolved_screen:
+        return new_screen, last_anchor
+    return new_screen, None
+
+
+def resolve_overlay_reposition_screen(
+    *,
+    screen_target: str,
+    primary_screen: Any | None,
+    cursor_screen: Any | None,
+    screens: Sequence[Any],
+    last_resolved_screen: Any | None,
+    current_geometry: Any | None,
+) -> Any | None:
+    """Resolve the best screen for the current overlay reposition request."""
+    screen = resolve_overlay_screen(
+        screen_target=screen_target,
+        primary_screen=primary_screen,
+        cursor_screen=cursor_screen,
+        screens=screens,
+    )
+    if screen is not None:
+        return screen
+    if last_resolved_screen is not None:
+        return last_resolved_screen
+
+    geometry_screen = resolve_screen_from_geometry(current_geometry, screens)
+    if geometry_screen is not None:
+        return geometry_screen
+    if primary_screen is not None:
+        return primary_screen
+    if screens:
+        return screens[0]
+    return None
+
+
 def resolve_overlay_theme(color: str) -> OverlayTheme:
     """Translate tray colors into a readable overlay theme."""
     themes = {
@@ -277,30 +470,35 @@ def resolve_overlay_theme(color: str) -> OverlayTheme:
             accent_soft="rgba(255, 154, 178, 0.16)",
             border="rgba(255, 145, 176, 0.55)",
             background="rgba(86, 20, 34, 0.94)",
+            badge_border="rgba(255, 145, 176, 0.35)",
         ),
         "lightgreen": OverlayTheme(
-            accent="#a9efb9",
-            accent_soft="rgba(169, 239, 185, 0.16)",
-            border="rgba(172, 237, 191, 0.48)",
-            background="rgba(20, 54, 33, 0.93)",
+            accent="#9ae4b4",
+            accent_soft="rgba(154, 228, 180, 0.14)",
+            border="rgba(148, 235, 175, 0.28)",
+            background="rgba(27, 126, 63, 0.30)",
+            badge_border="rgba(154, 228, 180, 0.35)",
         ),
         "orange": OverlayTheme(
-            accent="#ffc86b",
-            accent_soft="rgba(255, 200, 107, 0.18)",
-            border="rgba(255, 201, 107, 0.5)",
-            background="rgba(79, 46, 12, 0.94)",
+            accent="#ffcc73",
+            accent_soft="rgba(255, 204, 115, 0.14)",
+            border="rgba(255, 205, 108, 0.32)",
+            background="rgba(166, 111, 20, 0.30)",
+            badge_border="rgba(255, 205, 108, 0.36)",
         ),
         "tomato": OverlayTheme(
-            accent="#ff9d84",
-            accent_soft="rgba(255, 157, 132, 0.16)",
-            border="rgba(255, 157, 132, 0.52)",
-            background="rgba(85, 29, 23, 0.94)",
+            accent="#ffab92",
+            accent_soft="rgba(255, 171, 146, 0.14)",
+            border="rgba(255, 163, 139, 0.30)",
+            background="rgba(156, 53, 31, 0.30)",
+            badge_border="rgba(255, 163, 139, 0.36)",
         ),
         "yellow": OverlayTheme(
-            accent="#ffe27a",
-            accent_soft="rgba(255, 226, 122, 0.18)",
-            border="rgba(255, 226, 122, 0.5)",
-            background="rgba(78, 66, 18, 0.94)",
+            accent="#f5d360",
+            accent_soft="rgba(245, 211, 96, 0.14)",
+            border="rgba(255, 218, 96, 0.32)",
+            background="rgba(149, 122, 19, 0.30)",
+            badge_border="rgba(255, 218, 96, 0.34)",
         ),
     }
     return themes.get(
@@ -309,7 +507,8 @@ def resolve_overlay_theme(color: str) -> OverlayTheme:
             accent="#e8eef6",
             accent_soft="rgba(232, 238, 246, 0.12)",
             border="rgba(232, 238, 246, 0.28)",
-            background="rgba(25, 31, 42, 0.93)",
+            background="rgba(25, 31, 42, 0.92)",
+            badge_border="rgba(232, 238, 246, 0.30)",
         ),
     )
 
@@ -329,7 +528,6 @@ class OverlayWindow:
             QGraphicsOpacityEffect,
             QHBoxLayout,
             QLabel,
-            QSizePolicy,
             QVBoxLayout,
             QWidget,
         )
@@ -339,6 +537,11 @@ class OverlayWindow:
             | Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
         )
+        if (
+            hasattr(Qt.WindowType, "NoDropShadowWindowHint")
+            and should_disable_native_window_shadow()
+        ):
+            flags |= Qt.WindowType.NoDropShadowWindowHint
         if hasattr(Qt.WindowType, "WindowDoesNotAcceptFocus"):
             flags |= Qt.WindowType.WindowDoesNotAcceptFocus
         if hasattr(Qt.WindowType, "WindowTransparentForInput"):
@@ -352,34 +555,39 @@ class OverlayWindow:
         self._position = position
         self._screen_target = screen_target
         self._fade_visible = False
+        self._use_window_opacity_fade = False
         self._last_anchor: tuple[int, int] | None = None
+        self._last_resolved_screen: Any | None = None
 
         root_layout = QVBoxLayout(self._widget)
         root_layout.setContentsMargins(0, 0, 0, 0)
 
         self._card = QFrame(self._widget)
         self._card.setObjectName("overlayCard")
-        self._card_shell = QHBoxLayout(self._card)
-        self._card_shell.setContentsMargins(0, 0, 0, 0)
-        self._card_shell.setSpacing(0)
-
-        self._accent = QFrame(self._card)
-        self._accent.setObjectName("overlayAccent")
-
         self._content = QWidget(self._card)
         self._content_layout = QVBoxLayout(self._content)
 
-        self._badge = QLabel(self._content)
+        self._badge_shell = QFrame(self._content)
+        self._badge_shell.setObjectName("overlayBadgeShell")
+        self._badge_layout = QHBoxLayout(self._badge_shell)
+        self._badge_layout.setContentsMargins(10, 6, 10, 6)
+        self._badge_layout.setSpacing(7)
+
+        self._badge_dot = QLabel(self._badge_shell)
+        self._badge_dot.setObjectName("overlayBadgeDot")
+        self._badge_dot.setText("●")
+        self._badge_dot.setFont(QFont("Segoe UI Symbol", 10))
+
+        self._badge = QLabel(self._badge_shell)
         self._badge.setObjectName("overlayBadge")
-        self._badge.setSizePolicy(
-            QSizePolicy.Policy.Maximum,
-            QSizePolicy.Policy.Fixed,
-        )
         self._badge.setFont(QFont("Segoe UI Semibold", 9))
+        self._badge_layout.addWidget(self._badge_dot)
+        self._badge_layout.addWidget(self._badge)
 
         self._primary = QLabel(self._content)
         self._primary.setObjectName("overlayPrimary")
         self._primary.setWordWrap(True)
+        self._primary.setTextFormat(Qt.TextFormat.RichText)
         self._primary.setFont(QFont("Segoe UI Semibold", 12))
 
         self._secondary = QLabel(self._content)
@@ -392,27 +600,35 @@ class OverlayWindow:
         self._hint.setWordWrap(True)
         self._hint.setFont(QFont("Segoe UI", 9))
 
-        self._content_layout.addWidget(self._badge, 0, Qt.AlignmentFlag.AlignLeft)
+        self._content_layout.addWidget(self._badge_shell, 0, Qt.AlignmentFlag.AlignLeft)
         self._content_layout.addWidget(self._primary)
         self._content_layout.addWidget(self._secondary)
         self._content_layout.addWidget(self._hint)
-        self._card_shell.addWidget(self._accent)
-        self._card_shell.addWidget(self._content)
+        card_layout = QVBoxLayout(self._card)
+        card_layout.setContentsMargins(0, 0, 0, 0)
+        card_layout.addWidget(self._content)
         root_layout.addWidget(self._card)
-
-        shadow = QGraphicsDropShadowEffect(self._card)
-        shadow.setBlurRadius(40)
-        shadow.setOffset(0, 12)
-        shadow.setColor(QColor(0, 0, 0, 70))
-        self._card.setGraphicsEffect(shadow)
-
-        self._opacity = QGraphicsOpacityEffect(self._widget)
-        self._opacity.setOpacity(0.0)
-        self._widget.setGraphicsEffect(self._opacity)
 
         from PySide6.QtCore import QEasingCurve, QPropertyAnimation
 
-        self._fade = QPropertyAnimation(self._opacity, b"opacity", self._widget)
+        if should_use_card_shadow():
+            shadow = QGraphicsDropShadowEffect(self._card)
+            shadow.setBlurRadius(38)
+            shadow.setOffset(0, 18)
+            shadow.setColor(QColor(0, 0, 0, 46))
+            self._card.setGraphicsEffect(shadow)
+
+        self._opacity: Any | None = None
+        if self._use_window_opacity_fade:
+            self._widget.setWindowOpacity(0.0)
+            self._fade = QPropertyAnimation(
+                self._widget, b"windowOpacity", self._widget
+            )
+        else:
+            self._opacity = QGraphicsOpacityEffect(self._widget)
+            self._opacity.setOpacity(0.0)
+            self._widget.setGraphicsEffect(self._opacity)
+            self._fade = QPropertyAnimation(self._opacity, b"opacity", self._widget)
         self._fade.setDuration(180)
         self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
         self._fade.finished.connect(self._on_fade_finished)
@@ -433,7 +649,7 @@ class OverlayWindow:
         self._apply_fonts(layout)
 
         self._badge.setText(presentation.overlay_badge.upper())
-        self._primary.setText(presentation.overlay_primary)
+        self._primary.setText(self._format_primary_markup(presentation))
 
         secondary = presentation.overlay_secondary or ""
         self._secondary.setText(secondary)
@@ -450,10 +666,10 @@ class OverlayWindow:
                 border: 1px solid %(border)s;
                 border-radius: %(radius)spx;
             }
-            QFrame#overlayAccent {
-                background-color: %(accent)s;
-                border-top-left-radius: %(radius)spx;
-                border-bottom-left-radius: %(radius)spx;
+            QFrame#overlayBadgeShell {
+                background-color: %(accent_soft)s;
+                border: 1px solid %(badge_border)s;
+                border-radius: %(badge_radius)spx;
             }
             QLabel#overlayPrimary {
                 color: rgba(255, 255, 255, 0.96);
@@ -467,12 +683,13 @@ class OverlayWindow:
                 color: %(hint)s;
                 background: transparent;
             }
+            QLabel#overlayBadgeDot {
+                color: %(accent)s;
+                background: transparent;
+            }
             QLabel#overlayBadge {
                 color: %(accent)s;
-                background-color: %(accent_soft)s;
-                border: 1px solid %(border)s;
-                border-radius: %(badge_radius)spx;
-                padding: 3px 8px;
+                background: transparent;
             }
             """
             % {
@@ -480,6 +697,7 @@ class OverlayWindow:
                 "accent": theme.accent,
                 "accent_soft": theme.accent_soft,
                 "border": theme.border,
+                "badge_border": theme.badge_border,
                 "body": theme.body,
                 "hint": theme.hint,
                 "radius": layout.radius,
@@ -505,6 +723,7 @@ class OverlayWindow:
         self._hide_timer.stop()
         self._position_timer.stop()
         self._last_anchor = None
+        self._last_resolved_screen = None
         self._widget.close()
 
     def hide_now(self) -> None:
@@ -514,7 +733,8 @@ class OverlayWindow:
         self._fade.stop()
         self._fade_visible = False
         self._last_anchor = None
-        self._opacity.setOpacity(0.0)
+        self._last_resolved_screen = None
+        self._set_opacity(0.0)
         self._widget.hide()
 
     def update_anchor(self, position: str, screen_target: str) -> None:
@@ -528,7 +748,7 @@ class OverlayWindow:
         """Animate the overlay into view."""
         self._fade.stop()
         self._fade_visible = True
-        start = self._opacity.opacity()
+        start = self._current_opacity()
         self._fade.setStartValue(start)
         self._fade.setEndValue(1.0)
         self._fade.start()
@@ -539,7 +759,7 @@ class OverlayWindow:
             return
         self._fade.stop()
         self._fade_visible = False
-        start = self._opacity.opacity()
+        start = self._current_opacity()
         self._fade.setStartValue(start)
         self._fade.setEndValue(0.0)
         self._fade.start()
@@ -553,17 +773,36 @@ class OverlayWindow:
 
     def _reposition(self) -> None:
         """Place the overlay in the configured corner of the selected screen."""
-        from PySide6.QtGui import QCursor, QGuiApplication
+        from PySide6.QtGui import QCursor, QGuiApplication, QScreen
 
-        cursor_screen = None
+        screens = QGuiApplication.screens()
+        cursor_screen: QScreen | None = None
         if hasattr(QGuiApplication, "screenAt"):
-            cursor_screen = QGuiApplication.screenAt(QCursor.pos())
+            raw_screen = QGuiApplication.screenAt(QCursor.pos())
+            if isinstance(raw_screen, QScreen):
+                cursor_screen = raw_screen
 
-        screen = resolve_overlay_screen(
+        lookup_screen = resolve_overlay_screen(
             screen_target=self._screen_target,
             primary_screen=QGuiApplication.primaryScreen(),
             cursor_screen=cursor_screen,
-            screens=QGuiApplication.screens(),
+            screens=screens,
+        )
+        resolved_screen, resolved_anchor = update_last_resolved_screen(
+            last_resolved_screen=self._last_resolved_screen,
+            new_screen=lookup_screen,
+            last_anchor=self._last_anchor,
+        )
+        self._last_resolved_screen = resolved_screen
+        self._last_anchor = resolved_anchor  # type: ignore[assignment]
+
+        screen = resolve_overlay_reposition_screen(
+            screen_target=self._screen_target,
+            primary_screen=QGuiApplication.primaryScreen(),
+            cursor_screen=cursor_screen,
+            screens=screens,
+            last_resolved_screen=self._last_resolved_screen,
+            current_geometry=self._widget.geometry(),
         )
         if screen is None:
             self._last_anchor = None
@@ -595,7 +834,6 @@ class OverlayWindow:
         """Apply layout tokens before sizing and rendering the card."""
         self._card.setMinimumWidth(layout.min_width)
         self._card.setMaximumWidth(layout.max_width)
-        self._accent.setFixedWidth(layout.accent_width)
         self._content_layout.setContentsMargins(
             layout.padding_horizontal,
             layout.padding_vertical,
@@ -608,10 +846,59 @@ class OverlayWindow:
         """Refresh font sizing when the density or state changes."""
         from PySide6.QtGui import QFont
 
-        self._badge.setFont(QFont("Segoe UI Semibold", max(layout.hint_size, 9)))
+        self._badge.setFont(
+            QFont("Segoe UI Semibold", max(layout.secondary_size - 1, 9))
+        )
+        self._badge_dot.setFont(
+            QFont("Segoe UI Symbol", max(layout.secondary_size, 10))
+        )
         self._primary.setFont(QFont("Segoe UI Semibold", layout.primary_size))
         self._secondary.setFont(QFont("Segoe UI", layout.secondary_size))
         self._hint.setFont(QFont("Segoe UI", layout.hint_size))
+
+    def _current_opacity(self) -> float:
+        """Return the active fade opacity for the top-level widget."""
+        if self._use_window_opacity_fade:
+            return float(self._widget.windowOpacity())
+        if self._opacity is None:
+            return 1.0
+        return float(self._opacity.opacity())
+
+    def _set_opacity(self, value: float) -> None:
+        """Set overlay opacity without assuming a specific fade backend."""
+        if self._use_window_opacity_fade:
+            self._widget.setWindowOpacity(value)
+            return
+        if self._opacity is not None:
+            self._opacity.setOpacity(value)
+
+    @staticmethod
+    def _format_keycap(token: str) -> str:
+        """Render a keyboard token with the artifact-style keycap treatment."""
+        return (
+            '<span style="display:inline-block; '
+            "font-family:Consolas, 'Cascadia Mono', monospace; "
+            "padding:3px 6px; background:#1f1f1f; border-radius:3px; "
+            "color:#ffffff; line-height:1; vertical-align:baseline; "
+            'box-shadow:0 0 0 1px rgba(255, 255, 255, 0.06);">'
+            f"{html.escape(token)}"
+            "</span>"
+        )
+
+    def _format_primary_markup(self, presentation: AppStatePresentation) -> str:
+        """Render primary copy with rich text when the state calls for keycaps."""
+        primary_text = presentation.overlay_primary
+        if presentation.state is not AppState.READY:
+            return html.escape(primary_text)
+
+        prefix = "Hold "
+        suffix = " to dictate."
+        if not primary_text.startswith(prefix) or not primary_text.endswith(suffix):
+            return html.escape(primary_text)
+
+        hotkey = primary_text[len(prefix) : -len(suffix)]
+        keycaps = "+".join(self._format_keycap(part) for part in hotkey.split("+"))
+        return f"{html.escape(prefix)}{keycaps}{html.escape(suffix)}"
 
     def _apply_platform_window_behaviors(self) -> None:
         """Apply native focus and input behavior when the platform supports it."""
@@ -625,6 +912,469 @@ class OverlayWindow:
             return
 
 
+if _PYSIDE6_AVAILABLE:
+
+    class BlobWidget(QWidget):
+        """Animated painter-only blob used by the full-screen overlay."""
+
+        _CONTROL_POINT_COUNT = 10
+        _TRANSITION_SECONDS = 0.3
+
+        def __init__(self, parent: QWidget | None = None) -> None:
+            super().__init__(parent)
+            self._t = 0.0
+            self._current_radius = 0.0
+            self._target_radius = 0.0
+            self._current_amplitude = 0.0
+            self._target_amplitude = 0.0
+            self._speed_scale = 0.3
+            self._saturation = 0.2
+            self._fixed_hue: float | None = None
+            self._device_pixel_ratio = 1.0
+            self._last_tick = time.monotonic()
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+            self.setFixedSize(
+                resolve_blob_widget_size(self._device_pixel_ratio),
+                resolve_blob_widget_size(self._device_pixel_ratio),
+            )
+
+            blur = QGraphicsBlurEffect(self)
+            blur.setBlurRadius(_BLOB_BLUR_RADIUS)
+            self.setGraphicsEffect(blur)
+
+        def set_visual_state(
+            self,
+            state: AppState,
+            *,
+            device_pixel_ratio: float,
+        ) -> BlobVisualSpec:
+            """Update the blob target parameters for the current app state."""
+            spec = resolve_blob_visual_spec(state)
+            self._device_pixel_ratio = max(device_pixel_ratio, 1.0)
+            size = resolve_blob_widget_size(self._device_pixel_ratio)
+            self.setFixedSize(size, size)
+            self._target_radius = spec.base_radius * self._device_pixel_ratio
+            self._target_amplitude = self._target_radius * spec.amplitude_scale
+            self._speed_scale = spec.speed_scale
+            self._saturation = spec.saturation
+            self._fixed_hue = spec.fixed_hue
+            if self._current_radius == 0:
+                self._current_radius = self._target_radius
+            if self._current_amplitude == 0:
+                self._current_amplitude = self._target_amplitude
+            self._last_tick = time.monotonic()
+            return spec
+
+        def advance_animation(self) -> None:
+            """Advance the blob animation and schedule a repaint."""
+            now = time.monotonic()
+            elapsed = max(0.0, now - self._last_tick)
+            self._last_tick = now
+            self._t += 0.033 * self._speed_scale
+            lerp = min(1.0, elapsed / self._TRANSITION_SECONDS)
+            self._current_radius += (self._target_radius - self._current_radius) * lerp
+            self._current_amplitude += (
+                self._target_amplitude - self._current_amplitude
+            ) * lerp
+            self.update()
+
+        def _current_hue(self) -> float:
+            """Resolve the current hue, cycling when the state allows it."""
+            if self._fixed_hue is not None:
+                return self._fixed_hue
+            return (self._t * 25) % 360
+
+        def _blob_points(self) -> list[QPointF]:
+            """Generate the control points that define the morphing blob."""
+            center_x = self.width() / 2
+            center_y = self.height() / 2
+            points: list[QPointF] = []
+            amplitude_one = self._current_radius * 0.20
+            amplitude_two = self._current_radius * 0.10
+            amplitude_three = self._current_radius * 0.12
+            scale = (
+                self._current_amplitude / self._target_amplitude
+                if self._target_amplitude > 0
+                else 1.0
+            )
+
+            for index in range(self._CONTROL_POINT_COUNT):
+                theta = (2 * math.pi * index) / self._CONTROL_POINT_COUNT
+                delta = (
+                    amplitude_one * math.sin((2 * theta) + (self._t * 1.5))
+                    + amplitude_two * math.sin((3 * theta) + (self._t * 2.3))
+                    + amplitude_three * math.cos((5 * theta) + (self._t * 0.8))
+                ) * scale
+                radius = self._current_radius + delta
+                points.append(
+                    QPointF(
+                        center_x + (radius * math.cos(theta)),
+                        center_y + (radius * math.sin(theta)),
+                    )
+                )
+            return points
+
+        def _build_path(self, points: list[QPointF]) -> QPainterPath:
+            """Create a smooth closed spline through the blob control points."""
+            path = QPainterPath()
+            if not points:
+                return path
+
+            point_count = len(points)
+            path.moveTo(points[0])
+            for index in range(point_count):
+                prev_point = points[(index - 1) % point_count]
+                current_point = points[index]
+                next_point = points[(index + 1) % point_count]
+                following_point = points[(index + 2) % point_count]
+                control_one = QPointF(
+                    current_point.x() + ((next_point.x() - prev_point.x()) / 6),
+                    current_point.y() + ((next_point.y() - prev_point.y()) / 6),
+                )
+                control_two = QPointF(
+                    next_point.x() - ((following_point.x() - current_point.x()) / 6),
+                    next_point.y() - ((following_point.y() - current_point.y()) / 6),
+                )
+                path.cubicTo(control_one, control_two, next_point)
+            path.closeSubpath()
+            return path
+
+        def paintEvent(self, event: Any) -> None:  # noqa: N802
+            """Paint the animated blob with a soft radial gradient."""
+            del event
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+
+            hue = self._current_hue() / 360.0
+            gradient = QRadialGradient(
+                self.rect().center(),
+                max(self._current_radius * 1.35, self.width() / 3),
+            )
+            gradient.setColorAt(
+                0.0,
+                QColor.fromHsvF(hue, self._saturation, 1.0, 0.9),
+            )
+            gradient.setColorAt(
+                1.0,
+                QColor.fromHsvF(
+                    ((self._current_hue() + 40) % 360) / 360.0,
+                    self._saturation * 0.8,
+                    0.7,
+                    0.0,
+                ),
+            )
+            painter.setBrush(gradient)
+            painter.drawPath(self._build_path(self._blob_points()))
+
+else:
+
+    class BlobWidget:  # type: ignore[no-redef]
+        """Fallback placeholder used when PySide6 is unavailable."""
+
+        def __init__(self, parent: object | None = None) -> None:
+            del parent
+            raise RuntimeError("PySide6 is required for the blob overlay.")
+
+
+class BlobOverlayWindow:
+    """Full-screen dimming overlay with a centered animated blob."""
+
+    _POSITION_POLL_INTERVAL_MS = 250
+    _ANIMATION_INTERVAL_MS = 33
+
+    def __init__(self, position: str, screen_target: str) -> None:
+        from PySide6.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer
+        from PySide6.QtGui import QColor, QFont
+        from PySide6.QtWidgets import (
+            QGraphicsOpacityEffect,
+            QLabel,
+            QVBoxLayout,
+            QWidget,
+        )
+
+        class DimWidget(QWidget):
+            """Transparent top-level widget that paints the dim backdrop."""
+
+            def __init__(
+                self,
+                owner: "BlobOverlayWindow",
+                flags: Qt.WindowType,
+            ) -> None:
+                super().__init__(None, flags)
+                self._owner = owner
+
+            def paintEvent(self, event: Any) -> None:  # noqa: N802
+                del event
+                painter = QPainter(self)
+                painter.fillRect(
+                    self.rect(),
+                    QColor(0, 0, 0, self._owner._dim_alpha),
+                )
+
+        flags = (
+            Qt.WindowType.Tool
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        if hasattr(Qt.WindowType, "WindowDoesNotAcceptFocus"):
+            flags |= Qt.WindowType.WindowDoesNotAcceptFocus
+        if hasattr(Qt.WindowType, "WindowTransparentForInput"):
+            flags |= Qt.WindowType.WindowTransparentForInput
+
+        self._widget = DimWidget(self, flags)
+        self._widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        self._widget.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
+        self._widget.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+        self._widget.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self._position = position
+        self._screen_target = screen_target
+        self._fade_visible = False
+        self._use_window_opacity_fade = should_use_window_opacity_fade()
+        self._dim_alpha = 80
+        self._last_anchor: tuple[int, int, int, int] | None = None
+        self._last_resolved_screen: Any | None = None
+
+        root_layout = QVBoxLayout(self._widget)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root_layout.setSpacing(10)
+
+        self._blob = BlobWidget(self._widget)
+        root_layout.addWidget(self._blob, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self._badge = QLabel(self._widget)
+        self._badge.setFont(QFont("Segoe UI Semibold", 13))
+        self._badge.setStyleSheet("color: rgba(255, 255, 255, 0.98);")
+        root_layout.addWidget(self._badge, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self._primary = QLabel(self._widget)
+        self._primary.setWordWrap(True)
+        self._primary.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._primary.setMaximumWidth(640)
+        self._primary.setFont(QFont("Segoe UI", 15))
+        self._primary.setStyleSheet("color: rgba(255, 255, 255, 0.90);")
+        root_layout.addWidget(self._primary, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self._hint = QLabel(self._widget)
+        self._hint.setWordWrap(True)
+        self._hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._hint.setFont(QFont("Segoe UI", 12))
+        self._hint.setStyleSheet("color: rgba(255, 255, 255, 0.55);")
+        root_layout.addWidget(self._hint, 0, Qt.AlignmentFlag.AlignCenter)
+
+        self._opacity: Any | None = None
+        if self._use_window_opacity_fade:
+            self._widget.setWindowOpacity(0.0)
+            self._fade = QPropertyAnimation(
+                self._widget, b"windowOpacity", self._widget
+            )
+        else:
+            self._opacity = QGraphicsOpacityEffect(self._widget)
+            self._opacity.setOpacity(0.0)
+            self._widget.setGraphicsEffect(self._opacity)
+            self._fade = QPropertyAnimation(self._opacity, b"opacity", self._widget)
+        self._fade.setDuration(180)
+        self._fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade.finished.connect(self._on_fade_finished)
+
+        self._hide_timer = QTimer(self._widget)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self._fade_out)
+
+        self._position_timer = QTimer(self._widget)
+        self._position_timer.setInterval(self._POSITION_POLL_INTERVAL_MS)
+        self._position_timer.timeout.connect(self._reposition)
+
+        self._anim_timer = QTimer(self._widget)
+        self._anim_timer.setInterval(self._ANIMATION_INTERVAL_MS)
+        self._anim_timer.timeout.connect(self._blob.advance_animation)
+
+        self._apply_platform_window_behaviors()
+
+    def show_presentation(self, presentation: AppStatePresentation) -> None:
+        """Render a new blob overlay presentation and show the window."""
+        self._badge.setText(presentation.overlay_badge.upper())
+        self._primary.setText(presentation.overlay_primary)
+
+        hint = presentation.overlay_hint or ""
+        self._hint.setText(hint)
+        self._hint.setVisible(bool(hint))
+
+        screen = self._reposition()
+        device_pixel_ratio = 1.0
+        if screen is not None:
+            device_pixel_ratio_getter = getattr(screen, "devicePixelRatio", None)
+            if callable(device_pixel_ratio_getter):
+                device_pixel_ratio = float(device_pixel_ratio_getter())
+        spec = self._blob.set_visual_state(
+            presentation.state,
+            device_pixel_ratio=device_pixel_ratio,
+        )
+        self._dim_alpha = spec.dim_alpha
+        self._widget.update()
+
+        self._hide_timer.stop()
+        self._widget.show()
+        self._sync_position_tracking()
+        self._apply_platform_window_behaviors()
+        self._widget.raise_()
+        self._fade_in()
+
+        if presentation.overlay_auto_hide_seconds is not None:
+            duration_ms = max(0, int(presentation.overlay_auto_hide_seconds * 1000))
+            self._hide_timer.start(duration_ms)
+
+    def close(self) -> None:
+        """Close the backing widget."""
+        self._hide_timer.stop()
+        self._position_timer.stop()
+        self._anim_timer.stop()
+        self._last_anchor = None
+        self._last_resolved_screen = None
+        self._widget.close()
+
+    def hide_now(self) -> None:
+        """Hide the overlay immediately without waiting for the fade timer."""
+        self._hide_timer.stop()
+        self._position_timer.stop()
+        self._anim_timer.stop()
+        self._fade.stop()
+        self._fade_visible = False
+        self._last_anchor = None
+        self._last_resolved_screen = None
+        self._set_opacity(0.0)
+        self._widget.hide()
+
+    def update_anchor(self, position: str, screen_target: str) -> None:
+        """Update the preferred screen target and reposition if visible."""
+        self._position = position
+        self._screen_target = screen_target
+        if self._widget.isVisible():
+            self._reposition()
+
+    def _fade_in(self) -> None:
+        """Animate the overlay into view."""
+        self._fade.stop()
+        self._fade_visible = True
+        start = self._current_opacity()
+        self._fade.setStartValue(start)
+        self._fade.setEndValue(1.0)
+        self._fade.start()
+
+    def _fade_out(self) -> None:
+        """Animate the overlay out of view."""
+        if not self._widget.isVisible():
+            return
+        self._fade.stop()
+        self._fade_visible = False
+        start = self._current_opacity()
+        self._fade.setStartValue(start)
+        self._fade.setEndValue(0.0)
+        self._fade.start()
+
+    def _on_fade_finished(self) -> None:
+        """Hide the widget after fade-out completes."""
+        if not self._fade_visible:
+            self._position_timer.stop()
+            self._anim_timer.stop()
+            self._last_anchor = None
+            self._widget.hide()
+
+    def _reposition(self) -> Any | None:
+        """Resize the overlay to cover the selected screen."""
+        from PySide6.QtGui import QCursor, QGuiApplication, QScreen
+
+        screens = QGuiApplication.screens()
+        cursor_screen: QScreen | None = None
+        if hasattr(QGuiApplication, "screenAt"):
+            raw_screen = QGuiApplication.screenAt(QCursor.pos())
+            if isinstance(raw_screen, QScreen):
+                cursor_screen = raw_screen
+
+        lookup_screen = resolve_overlay_screen(
+            screen_target=self._screen_target,
+            primary_screen=QGuiApplication.primaryScreen(),
+            cursor_screen=cursor_screen,
+            screens=screens,
+        )
+        resolved_screen, resolved_anchor = update_last_resolved_screen(
+            last_resolved_screen=self._last_resolved_screen,
+            new_screen=lookup_screen,
+            last_anchor=self._last_anchor,
+        )
+        self._last_resolved_screen = resolved_screen
+        self._last_anchor = resolved_anchor  # type: ignore[assignment]
+        screen = resolve_overlay_reposition_screen(
+            screen_target=self._screen_target,
+            primary_screen=QGuiApplication.primaryScreen(),
+            cursor_screen=cursor_screen,
+            screens=screens,
+            last_resolved_screen=self._last_resolved_screen,
+            current_geometry=self._widget.geometry(),
+        )
+        if screen is None:
+            self._last_anchor = None
+            return None
+
+        geometry = screen.geometry()
+        anchor = (geometry.x(), geometry.y(), geometry.width(), geometry.height())
+        if anchor == self._last_anchor:
+            return screen
+
+        self._last_anchor = anchor
+        self._widget.setGeometry(*anchor)
+        return screen
+
+    def _sync_position_tracking(self) -> None:
+        """Keep the blob overlay aligned and animated while visible."""
+        if self._widget.isVisible():
+            self._position_timer.start()
+            self._anim_timer.start()
+            return
+        self._position_timer.stop()
+        self._anim_timer.stop()
+        self._last_anchor = None
+
+    def _apply_platform_window_behaviors(self) -> None:
+        """Apply native focus and input behavior when the platform supports it."""
+        if not is_windows_platform():
+            return
+
+        try:
+            apply_windows_overlay_styles(int(self._widget.winId()))
+        except Exception:
+            return
+
+    def _current_opacity(self) -> float:
+        """Return the active fade opacity for the blob overlay widget."""
+        if self._use_window_opacity_fade:
+            return float(self._widget.windowOpacity())
+        if self._opacity is None:
+            return 1.0
+        return float(self._opacity.opacity())
+
+    def _set_opacity(self, value: float) -> None:
+        """Set blob overlay opacity without assuming a specific fade backend."""
+        if self._use_window_opacity_fade:
+            self._widget.setWindowOpacity(value)
+            return
+        if self._opacity is not None:
+            self._opacity.setOpacity(value)
+
+
+def create_overlay_window(
+    *,
+    position: str,
+    screen_target: str,
+    style: str,
+) -> OverlayWindow | BlobOverlayWindow:
+    """Create the requested overlay window implementation."""
+    if style == "blob":
+        return BlobOverlayWindow(position=position, screen_target=screen_target)
+    return OverlayWindow(position=position, screen_target=screen_target)
+
+
 class PySide6OverlayRuntime:
     """Qt runtime that drains state updates and renders the overlay window."""
 
@@ -633,10 +1383,12 @@ class PySide6OverlayRuntime:
         commands: queue.Queue[OverlayCommand],
         position: str,
         screen_target: str,
+        style: str,
     ) -> None:
         self._commands = commands
         self._position = position
         self._screen_target = screen_target
+        self._style = style
 
     def run(self, startup_callback: OverlayStartupCallback) -> None:
         """Start the Qt event loop and process overlay commands."""
@@ -646,9 +1398,10 @@ class PySide6OverlayRuntime:
         enable_windows_per_monitor_dpi_awareness()
         app = QApplication([])
         app.setQuitOnLastWindowClosed(False)
-        window = OverlayWindow(
+        window = create_overlay_window(
             position=self._position,
             screen_target=self._screen_target,
+            style=self._style,
         )
         startup_callback(True)
 
@@ -663,7 +1416,7 @@ class PySide6OverlayRuntime:
             poller.stop()
             window.close()
 
-    def _drain_commands(self, window: OverlayWindow, app: Any) -> None:
+    def _drain_commands(self, window: Any, app: Any) -> None:
         """Apply the latest queued overlay command."""
         latest_presentation: AppStatePresentation | None = None
 

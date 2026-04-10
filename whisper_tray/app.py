@@ -90,6 +90,8 @@ class WhisperTrayApp:
         self._hotkey_listener: Optional[HotkeyListener] = None
         self._tray_update_lock = threading.Lock()
         self._tray_runtime: TrayRuntime | None = None
+        self._clipboard_monitor_stop = threading.Event()
+        self._clipboard_monitor: Optional[threading.Thread] = None
 
         # Transcription work queue (single worker thread)
         self._transcription_queue: queue.Queue = queue.Queue()
@@ -107,22 +109,18 @@ class WhisperTrayApp:
                 continue
 
             audio_data, lang = item
-            next_state = AppState.READY
+            next_snapshot = self._build_snapshot(AppState.READY)
             try:
-                text = self._transcriber.transcribe(audio_data, lang)
-                if text:
-                    logger.info(f"Recognized text: {text}")
-                    paste_result = self._clipboard.copy_and_paste(text)
-                    if paste_result is not None and not paste_result.succeeded:
-                        self._notify_user(
-                            "Auto-paste failed. Text is still in the clipboard."
-                        )
+                next_snapshot = self._transcribe_audio(audio_data, lang)
             except Exception as e:
                 logger.error(f"Transcription worker error: {e}")
-                next_state = AppState.ERROR
+                next_snapshot = self._build_snapshot(
+                    AppState.ERROR,
+                    message=str(e),
+                )
             finally:
                 self._transcription_queue.task_done()
-                self._stop_flash_timer(next_state=next_state)
+                self._stop_flash_timer(next_snapshot=next_snapshot)
 
     def _start_worker(self) -> None:
         """Start the single transcription worker thread."""
@@ -151,6 +149,27 @@ class WhisperTrayApp:
         if self._transcription_worker:
             self._transcription_worker.join(timeout=2.0)
 
+    def _transcribe_audio(
+        self,
+        audio_data: np.ndarray,
+        language: str,
+    ) -> AppStateSnapshot:
+        """Transcribe audio and convert the result into a publishable snapshot."""
+        text = self._transcriber.transcribe(audio_data, language)
+        if not text:
+            return self._build_snapshot(AppState.READY)
+
+        logger.info("Recognized text: %s", text)
+        paste_result = self._clipboard.copy_and_paste(text)
+        if paste_result is not None and not paste_result.succeeded:
+            self._notify_user("Auto-paste failed. Text is still in the clipboard.")
+
+        return self._build_snapshot(
+            AppState.TRANSCRIBED,
+            transcript=text,
+            auto_pasted=bool(paste_result and paste_result.succeeded),
+        )
+
     def _on_state_changed(self, snapshot: AppStateSnapshot) -> None:
         """Cache and fan out the latest app state to UI components."""
         self._state_snapshot = snapshot
@@ -171,12 +190,43 @@ class WhisperTrayApp:
         self._state_presenter = self._build_state_presenter()
         self._on_state_changed(self._state_snapshot)
 
-    def _publish_state(self, state: AppState, message: str | None = None) -> None:
-        """Publish a new shared app state."""
-        self._state_publisher.publish(
-            state,
+    def _build_snapshot(
+        self,
+        state: AppState,
+        *,
+        message: str | None = None,
+        transcript: str | None = None,
+        auto_pasted: bool = False,
+    ) -> AppStateSnapshot:
+        """Create a typed app-state snapshot for the current runtime."""
+        return AppStateSnapshot(
+            state=state,
             device=self._transcriber.device,
             message=message,
+            transcript=transcript,
+            auto_pasted=auto_pasted,
+        )
+
+    def _publish_snapshot(self, snapshot: AppStateSnapshot) -> None:
+        """Publish a pre-built shared app state snapshot."""
+        self._state_publisher.publish_snapshot(snapshot)
+
+    def _publish_state(
+        self,
+        state: AppState,
+        message: str | None = None,
+        *,
+        transcript: str | None = None,
+        auto_pasted: bool = False,
+    ) -> None:
+        """Publish a new shared app state."""
+        self._publish_snapshot(
+            self._build_snapshot(
+                state,
+                message=message,
+                transcript=transcript,
+                auto_pasted=auto_pasted,
+            )
         )
 
     def _get_idle_state(self) -> AppState:
@@ -188,6 +238,32 @@ class WhisperTrayApp:
         if self._model_load_complete.is_set():
             return AppState.ERROR
         return AppState.LOADING_MODEL
+
+    def _clipboard_monitor_loop(self) -> None:
+        """Revert the transcript state after the clipboard changes elsewhere."""
+        while not self._clipboard_monitor_stop.wait(0.25):
+            if self._state_snapshot.state is not AppState.TRANSCRIBED:
+                continue
+            if self._clipboard.owns_clipboard():
+                continue
+            self._publish_state(AppState.READY)
+
+    def _start_clipboard_monitor(self) -> None:
+        """Start the lightweight clipboard ownership monitor."""
+        self._clipboard_monitor_stop.clear()
+        self._clipboard_monitor = threading.Thread(
+            target=self._clipboard_monitor_loop,
+            daemon=True,
+            name="clipboard-monitor",
+        )
+        self._clipboard_monitor.start()
+
+    def _stop_clipboard_monitor(self) -> None:
+        """Stop the clipboard ownership monitor."""
+        self._clipboard_monitor_stop.set()
+        if self._clipboard_monitor and self._clipboard_monitor.is_alive():
+            self._clipboard_monitor.join(timeout=1.0)
+        self._clipboard_monitor = None
 
     def _on_hotkey_pressed(self) -> None:
         """Handle hotkey press event."""
@@ -265,14 +341,16 @@ class WhisperTrayApp:
         )
         self._flash_timer.start()
 
-    def _stop_flash_timer(self, next_state: AppState | None = None) -> None:
+    def _stop_flash_timer(self, next_snapshot: AppStateSnapshot | None = None) -> None:
         """Stop the flash timer."""
         self._flash_event.set()
         if self._flash_timer and self._flash_timer.is_alive():
             self._flash_timer.join(timeout=1.0)
         self._flash_timer = None
         self._processing_flash_on = False
-        self._publish_state(next_state or self._get_idle_state())
+        self._publish_snapshot(
+            next_snapshot or self._build_snapshot(self._get_idle_state())
+        )
 
     def _get_tray_title(self) -> str:
         """Return the current tray hover text for the active app state."""
@@ -326,6 +404,7 @@ class WhisperTrayApp:
             self.config.overlay.enabled,
             position=self.config.overlay.position,
             screen_target=self.config.overlay.screen,
+            style=self.config.overlay.overlay_style,
         )
 
         if self.config.overlay.enabled and isinstance(
@@ -603,6 +682,7 @@ class WhisperTrayApp:
 
         # Start the transcription worker thread
         self._start_worker()
+        self._start_clipboard_monitor()
 
         # Set up hotkey listener
         self._setup_hotkey_listener()
@@ -615,6 +695,7 @@ class WhisperTrayApp:
             self._tray_runtime.run()
         finally:
             self._stop_worker()
+            self._stop_clipboard_monitor()
             if self._hotkey_listener:
                 self._hotkey_listener.stop()
             self._overlay.close()

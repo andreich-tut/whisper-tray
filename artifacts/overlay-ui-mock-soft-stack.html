@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WhisperTray Overlay Mock - Soft Stack</title>
+    <style>
+      :root {
+        --page-bg: #0d1b27;
+        --text-strong: rgba(245, 247, 249, 0.92);
+        --text-body: rgba(238, 242, 245, 0.78);
+        --text-soft: rgba(236, 240, 242, 0.62);
+        --loading-fill: rgba(149, 122, 19, 0.3);
+        --loading-border: rgba(255, 218, 96, 0.32);
+        --loading-accent: #f5d360;
+        --ready-fill: rgba(27, 126, 63, 0.3);
+        --ready-border: rgba(148, 235, 175, 0.28);
+        --ready-accent: #9ae4b4;
+        --listening-fill: rgba(156, 53, 31, 0.3);
+        --listening-border: rgba(255, 163, 139, 0.3);
+        --listening-accent: #ffab92;
+        --processing-fill: rgba(166, 111, 20, 0.3);
+        --processing-border: rgba(255, 205, 108, 0.32);
+        --processing-accent: #ffcc73;
+        --error-fill: rgba(145, 31, 58, 0.3);
+        --error-border: rgba(255, 158, 182, 0.32);
+        --error-accent: #ffb0c3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 1366px;
+        height: 768px;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif;
+        background:
+          radial-gradient(circle at 18% 18%, rgba(53, 123, 155, 0.16), transparent 24%),
+          radial-gradient(circle at 82% 78%, rgba(69, 151, 122, 0.12), transparent 20%),
+          linear-gradient(180deg, #10202d, var(--page-bg));
+        color: var(--text-strong);
+      }
+
+      .frame {
+        position: relative;
+        width: 1366px;
+        height: 768px;
+        padding: 46px 50px;
+      }
+
+      .desktop-noise {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+        background-size: 74px 74px;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.24), transparent 92%);
+      }
+
+      .ghost-window {
+        position: absolute;
+        border-radius: 24px;
+        border: 1px solid rgba(228, 236, 241, 0.08);
+        background: rgba(200, 215, 225, 0.035);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.14);
+        backdrop-filter: blur(14px);
+      }
+
+      .ghost-window.one {
+        top: 118px;
+        right: 92px;
+        width: 470px;
+        height: 290px;
+      }
+
+      .ghost-window.two {
+        bottom: 102px;
+        right: 158px;
+        width: 340px;
+        height: 170px;
+      }
+
+      .ghost-window::before {
+        content: "";
+        position: absolute;
+        left: 18px;
+        right: 18px;
+        top: 18px;
+        height: 14px;
+        border-radius: 999px;
+        background: rgba(245, 248, 250, 0.06);
+      }
+
+      .stack {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        width: 590px;
+      }
+
+      .mini-card {
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--fill);
+        backdrop-filter: blur(16px);
+        box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18);
+      }
+
+      .mini-inner {
+        padding: 22px 24px 24px;
+      }
+
+      .mini-card.loading {
+        --fill: var(--loading-fill);
+        --border: var(--loading-border);
+        --accent: var(--loading-accent);
+      }
+
+      .mini-card.ready {
+        --fill: var(--ready-fill);
+        --border: var(--ready-border);
+        --accent: var(--ready-accent);
+      }
+
+      .mini-card.listening {
+        --fill: var(--listening-fill);
+        --border: var(--listening-border);
+        --accent: var(--listening-accent);
+      }
+
+      .mini-card.processing {
+        --fill: var(--processing-fill);
+        --border: var(--processing-border);
+        --accent: var(--processing-accent);
+      }
+
+      .mini-card.error {
+        --fill: var(--error-fill);
+        --border: var(--error-border);
+        --accent: var(--error-accent);
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 13px;
+        border-radius: 999px;
+        border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+        background: color-mix(in srgb, var(--accent) 14%, transparent);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .badge-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 14px color-mix(in srgb, currentColor 65%, transparent);
+      }
+
+      .primary {
+        margin: 18px 0 6px;
+        color: var(--text-strong);
+        font-size: 17px;
+        line-height: 1.4;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .secondary {
+        margin: 0;
+        color: var(--text-soft);
+        font-size: 13px;
+        line-height: 1.42;
+        font-weight: 500;
+      }
+
+      .mini-copy {
+        margin: 18px 0 6px;
+        color: var(--text-strong);
+        font-size: 17px;
+        line-height: 1.4;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+      }
+
+      .mini-hint {
+        margin: 0;
+        color: var(--text-soft);
+        font-size: 13px;
+        line-height: 1.42;
+        font-weight: 500;
+      }
+
+      .mini-copy-key {
+        display: inline-block;
+        font-family: monospace;
+        padding: 3px 6px;
+        background: #1f1f1f;
+        border-radius: 3px;
+        color: #fff;
+        line-height: 1;
+        vertical-align: baseline;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="frame">
+      <div class="desktop-noise"></div>
+      <div class="ghost-window one"></div>
+      <div class="ghost-window two"></div>
+
+      <section class="stack">
+        <article class="mini-card loading">
+          <div class="mini-inner">
+            <div class="badge">
+              <span class="badge-dot"></span>
+              Loading
+            </div>
+            <p class="mini-copy">WhisperTray is warming up in the background.</p>
+            <p class="mini-hint">
+              The tray icon turns green when dictation is ready.
+            </p>
+          </div>
+        </article>
+
+        <article class="mini-card ready">
+          <div class="mini-inner">
+            <div class="badge">
+              <span class="badge-dot"></span>
+              Ready
+            </div>
+            <p class="mini-copy">
+              Hold <span class="mini-copy-key">Ctrl</span>+<span class="mini-copy-key">Shift</span>+<span class="mini-copy-key">Space</span> to dictate.
+            </p>
+            <p class="mini-hint">
+              Release the hotkey to transcribe and paste.
+            </p>
+          </div>
+        </article>
+
+        <article class="mini-card listening">
+          <div class="mini-inner">
+            <div class="badge">
+              <span class="badge-dot"></span>
+              Listening
+            </div>
+            <p class="mini-copy">Release the hotkey to start transcription.</p>
+            <p class="mini-hint">
+              Keep holding the hotkey while you speak naturally.
+            </p>
+          </div>
+        </article>
+
+      </section>
+    </main>
+  </body>
+</html>

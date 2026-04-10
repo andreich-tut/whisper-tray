@@ -7,6 +7,7 @@ can react to the same structured events.
 
 from __future__ import annotations
 
+import textwrap
 import threading
 from dataclasses import dataclass
 from enum import Enum
@@ -20,6 +21,7 @@ class AppState(Enum):
     READY = "ready"
     RECORDING = "recording"
     PROCESSING = "processing"
+    TRANSCRIBED = "transcribed"
     ERROR = "error"
 
 
@@ -30,6 +32,8 @@ class AppStateSnapshot:
     state: AppState
     device: str = "cpu"
     message: str | None = None
+    transcript: str | None = None
+    auto_pasted: bool = False
 
 
 @dataclass(frozen=True)
@@ -174,6 +178,32 @@ class AppStatePresenter:
             return None
         return self._ready_auto_hide_seconds
 
+    @staticmethod
+    def _truncate_line(text: str, max_chars: int) -> str:
+        """Clamp a single line of overlay copy to a stable maximum width."""
+        if len(text) <= max_chars:
+            return text
+        return text[: max_chars - 3].rstrip() + "..."
+
+    def _format_transcript(self, transcript: str | None) -> str:
+        """Format recognized text for the selected overlay density."""
+        normalized = " ".join((transcript or "").split())
+        if not normalized:
+            return "Transcript ready"
+
+        if self._overlay_density == "compact":
+            return self._truncate_line(normalized, max_chars=56)
+
+        wrapped = textwrap.wrap(normalized, width=42, break_long_words=False)
+        if len(wrapped) <= 3:
+            return "\n".join(wrapped)
+
+        visible_lines = wrapped[:3]
+        visible_lines[-1] = self._truncate_line(visible_lines[-1], max_chars=39)
+        if not visible_lines[-1].endswith("..."):
+            visible_lines[-1] = visible_lines[-1].rstrip() + "..."
+        return "\n".join(visible_lines)
+
     def present(self, snapshot: AppStateSnapshot) -> AppStatePresentation:
         """Build the UI presentation for a state snapshot."""
         if snapshot.state is AppState.LOADING_MODEL:
@@ -181,11 +211,8 @@ class AppStatePresenter:
                 state=snapshot.state,
                 tray_title="Loading model...",
                 overlay_badge="Loading",
-                overlay_primary="Loading model...",
-                overlay_secondary=self._overlay_secondary(
-                    snapshot.state,
-                    "WhisperTray is warming up in the background.",
-                ),
+                overlay_primary="WhisperTray is warming up in the background.",
+                overlay_secondary=self._overlay_secondary(snapshot.state, None),
                 icon_color="yellow",
                 overlay_hint=self._overlay_hint(
                     snapshot.state,
@@ -199,11 +226,8 @@ class AppStatePresenter:
                 state=snapshot.state,
                 tray_title="Recording...",
                 overlay_badge="Listening",
-                overlay_primary="Listening...",
-                overlay_secondary=self._overlay_secondary(
-                    snapshot.state,
-                    "Release the hotkey to start transcription.",
-                ),
+                overlay_primary="Release the hotkey to start transcription.",
+                overlay_secondary=self._overlay_secondary(snapshot.state, None),
                 icon_color="tomato",
                 overlay_hint=self._overlay_hint(
                     snapshot.state,
@@ -218,10 +242,7 @@ class AppStatePresenter:
                 tray_title="Processing...",
                 overlay_badge="Processing",
                 overlay_primary="Processing speech...",
-                overlay_secondary=self._overlay_secondary(
-                    snapshot.state,
-                    "Transcribing your latest recording.",
-                ),
+                overlay_secondary=self._overlay_secondary(snapshot.state, None),
                 icon_color="orange",
                 overlay_hint=self._overlay_hint(
                     snapshot.state,
@@ -229,6 +250,30 @@ class AppStatePresenter:
                 ),
                 overlay_density=self._overlay_density,
                 flash_processing=True,
+            )
+
+        if snapshot.state is AppState.TRANSCRIBED:
+            badge = "PASTED" if snapshot.auto_pasted else "COPIED"
+            secondary = (
+                "Pasted and still available in the clipboard."
+                if snapshot.auto_pasted
+                else "Copied to the clipboard."
+            )
+            return AppStatePresentation(
+                state=snapshot.state,
+                tray_title=f"WhisperTray - {badge.title()} transcript",
+                overlay_badge=badge,
+                overlay_primary=self._format_transcript(snapshot.transcript),
+                overlay_secondary=self._overlay_secondary(
+                    snapshot.state,
+                    secondary,
+                ),
+                icon_color="lightgreen",
+                overlay_hint=self._overlay_hint(
+                    snapshot.state,
+                    "Shown until clipboard changes",
+                ),
+                overlay_density=self._overlay_density,
             )
 
         if snapshot.state is AppState.ERROR:
@@ -249,11 +294,8 @@ class AppStatePresenter:
             state=AppState.READY,
             tray_title=f"WhisperTray ({device_label} mode) - Ready",
             overlay_badge="Ready",
-            overlay_primary="Ready",
-            overlay_secondary=self._overlay_secondary(
-                AppState.READY,
-                f"Hold {self._hotkey_label} to dictate.",
-            ),
+            overlay_primary=f"Hold {self._hotkey_label} to dictate.",
+            overlay_secondary=self._overlay_secondary(AppState.READY, None),
             icon_color="lightgreen",
             overlay_hint=self._overlay_hint(
                 AppState.READY,
@@ -295,9 +337,21 @@ class AppStatePublisher:
         *,
         device: str,
         message: str | None = None,
+        transcript: str | None = None,
+        auto_pasted: bool = False,
     ) -> AppStateSnapshot:
         """Publish a new state snapshot to all listeners."""
-        snapshot = AppStateSnapshot(state=state, device=device, message=message)
+        snapshot = AppStateSnapshot(
+            state=state,
+            device=device,
+            message=message,
+            transcript=transcript,
+            auto_pasted=auto_pasted,
+        )
+        return self.publish_snapshot(snapshot)
+
+    def publish_snapshot(self, snapshot: AppStateSnapshot) -> AppStateSnapshot:
+        """Publish a pre-built state snapshot to all listeners."""
         with self._lock:
             self._snapshot = snapshot
             listeners = tuple(self._listeners)

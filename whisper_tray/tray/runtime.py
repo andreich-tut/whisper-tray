@@ -32,6 +32,7 @@ class TrayRuntime(Protocol):
         *,
         position: str,
         screen_target: str,
+        style: str,
     ) -> OverlayController:
         """Create an overlay controller compatible with this tray runtime."""
 
@@ -77,12 +78,14 @@ class PystrayTrayRuntime:
         *,
         position: str,
         screen_target: str,
+        style: str,
     ) -> OverlayController:
         """Create the threaded overlay used by the legacy pystray runtime."""
         return create_overlay_controller(
             enabled,
             position=position,
             screen_target=screen_target,
+            style=style,
         )
 
 
@@ -199,19 +202,26 @@ class QtOverlayController:
         enabled: bool,
         position: str,
         screen_target: str,
+        style: str,
     ) -> None:
         self._bridge = bridge
         self._enabled = enabled
         self._position = position
         self._screen_target = screen_target
+        self._style = style
         self._closed = False
-        self._bridge.configure.emit(enabled, position, screen_target)
+        self._bridge.configure.emit(enabled, position, screen_target, style)
 
     def show_state(self, presentation: Any) -> None:
         """Render the latest presentation on the shared overlay window."""
         if self._closed or not self._enabled:
             return
-        self._bridge.configure.emit(True, self._position, self._screen_target)
+        self._bridge.configure.emit(
+            True,
+            self._position,
+            self._screen_target,
+            self._style,
+        )
         self._bridge.show_presentation.emit(presentation)
 
     def close(self) -> None:
@@ -225,15 +235,19 @@ class QtOverlayController:
 class QtOverlayHost:
     """Shared overlay host that lives on the same Qt event loop as the tray."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, style: str) -> None:
         from PySide6.QtCore import QObject, Signal
 
-        from whisper_tray.overlay.pyside_overlay import OverlayWindow
+        from whisper_tray.overlay.pyside_overlay import create_overlay_window
 
-        window = OverlayWindow(position="bottom-right", screen_target="primary")
+        window = create_overlay_window(
+            position="bottom-right",
+            screen_target="primary",
+            style=style,
+        )
 
         class Bridge(QObject):
-            configure = Signal(bool, str, str)
+            configure = Signal(bool, str, str, str)
             show_presentation = Signal(object)
             hide_overlay = Signal()
             close_window = Signal()
@@ -243,6 +257,7 @@ class QtOverlayHost:
                 self._enabled = False
                 self._position = "bottom-right"
                 self._screen_target = "primary"
+                self._style = style
                 self._window = overlay_window
                 self.configure.connect(self._configure)
                 self.show_presentation.connect(self._show_presentation)
@@ -254,10 +269,19 @@ class QtOverlayHost:
                 enabled: bool,
                 position: str,
                 screen_target: str,
+                overlay_style: str,
             ) -> None:
                 self._enabled = enabled
                 self._position = position
                 self._screen_target = screen_target
+                if overlay_style != self._style:
+                    self._window.close()
+                    self._window = create_overlay_window(
+                        position=position,
+                        screen_target=screen_target,
+                        style=overlay_style,
+                    )
+                    self._style = overlay_style
                 self._window.update_anchor(position, screen_target)
                 if not enabled:
                     self._window.hide_now()
@@ -282,6 +306,7 @@ class QtOverlayHost:
         *,
         position: str,
         screen_target: str,
+        style: str,
     ) -> OverlayController:
         """Create a new controller facade for the shared overlay window."""
         if not enabled:
@@ -291,6 +316,7 @@ class QtOverlayHost:
             enabled=enabled,
             position=position,
             screen_target=screen_target,
+            style=style,
         )
 
     def close(self) -> None:
@@ -337,7 +363,7 @@ class QtTrayRuntime:
         tray_icon.show()
 
         self._tray_icon = tray_icon
-        self._overlay_host = QtOverlayHost()
+        self._overlay_host = QtOverlayHost(style=app.config.overlay.overlay_style)
         app._tray_icon_ref = tray_handle
 
     def run(self) -> None:
@@ -359,6 +385,7 @@ class QtTrayRuntime:
         *,
         position: str,
         screen_target: str,
+        style: str,
     ) -> OverlayController:
         """Create a main-thread overlay controller on the shared Qt runtime."""
         if self._overlay_host is None:
@@ -367,4 +394,5 @@ class QtTrayRuntime:
             enabled,
             position=position,
             screen_target=screen_target,
+            style=style,
         )
