@@ -49,21 +49,35 @@ The current hotspots justify the split:
   public import surface stable
 - current slice: moved the existing session, UI, and workflow coordinators
   under `whisper_tray/app/` and left the old root modules as thin facades
+- current slice: split `app/workflow.py` into `app/workflow/` package with
+  `worker.py` (WorkerCoordinator), `recording.py` (RecordingCoordinator),
+  `clipboard_monitor.py` (ClipboardMonitorCoordinator), and `flash.py`
+  (FlashTimerCoordinator); `app/workflow/__init__.py` re-exports
+  `AppWorkflowCoordinator` as a composing facade
+- current slice: split `app/ui.py` into `app/ui/` package with
+  `presentation.py` (PresentationCoordinator), `tray_updates.py`
+  (TrayUpdatesCoordinator), and `overlay_runtime.py`
+  (OverlayRuntimeCoordinator); `app/ui/__init__.py` re-exports
+  `AppUiCoordinator` as a composing facade
+- current slice: split `app/session.py` into `app/actions/` package with
+  `language.py` (LanguageActions), `overlay.py` (OverlayActions), and
+  `session.py` (SessionActions); `app/actions/__init__.py` re-exports
+  `AppSessionActions` as a composing facade; `app/session.py` is now a thin
+  re-export shim pointing to `app/actions`
 - verification: `python3 -m compileall whisper_tray`
 - verification: `python3 -m compileall whisper_tray packaging`
 - verification: `venv/bin/python -m pytest tests/test_state_models.py tests/test_state_presentation.py tests/test_config_model.py tests/test_config_overlay.py tests/test_config_env.py tests/test_overlay.py tests/test_tray.py`
 - verification: `venv/bin/python -m pytest tests/test_tray.py tests/test_hotkey.py tests/test_audio_recorder.py tests/test_audio_transcriber.py tests/test_clipboard_flow.py tests/test_clipboard_windows_fallbacks.py`
 - verification: `venv/bin/python -m pytest tests/test_app.py tests/test_tray.py tests/test_overlay.py tests/test_state_models.py tests/test_state_presentation.py tests/test_config_model.py tests/test_config_overlay.py tests/test_config_env.py tests/test_hotkey.py tests/test_audio_recorder.py tests/test_audio_transcriber.py tests/test_clipboard_flow.py tests/test_clipboard_windows_fallbacks.py`
 - verification: `python3 -m py_compile scripts/windows/test_tray_icon.py`
-- next: continue the app-layer decomposition by splitting session, workflow,
-  and UI helpers under the new `whisper_tray/app/` package into smaller
-  workflow- and action-specific modules
-- stop point: paused after the core/platform split, adapter entry-point pass,
-  low-risk repo cleanup, Windows build-path migration, and the first app
-  package migration so the next pass can start directly with the finer-grained
-  app-layer split
-- remaining high-risk work: the `app/` package split still needs a second pass
-  because `whisper_tray/app.py` currently occupies the public import path
+- next: the app-layer split is now complete; consider deleting the root-level
+  `app_workflow.py`, `app_ui.py`, `app_actions.py` facades if no external
+  callers remain, and wire up the remaining high-risk work: removing
+  `whisper_tray/types.py` by co-locating type aliases with their owning
+  adapters
+- stop point: paused after the finer-grained app-layer split into focused
+  workflow, UI, and action subpackages; all 104 tests pass, lint and mypy
+  clean on new files
 
 ## Target Structure
 
