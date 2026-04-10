@@ -217,11 +217,6 @@ class OverlayConfig:
         "primary",
         "cursor",
     }
-    VALID_STYLES = {
-        "blob",
-        "card",
-    }
-
     enabled: bool = field(
         default_factory=lambda: os.getenv("OVERLAY_ENABLED", "false").lower()
         in ("true", "1", "yes", "on")
@@ -235,9 +230,6 @@ class OverlayConfig:
     screen: str = field(default_factory=lambda: os.getenv("OVERLAY_SCREEN", "primary"))
     density: str = field(
         default_factory=lambda: os.getenv("OVERLAY_DENSITY", "detailed")
-    )
-    overlay_style: str = field(
-        default_factory=lambda: os.getenv("OVERLAY_STYLE", "card").lower()
     )
 
     def __post_init__(self) -> None:
@@ -269,13 +261,6 @@ class OverlayConfig:
                 self.density,
             )
             self.density = "detailed"
-
-        if self.overlay_style not in self.VALID_STYLES:
-            logger.warning(
-                "Unknown overlay style: %s. Setting to card.",
-                self.overlay_style,
-            )
-            self.overlay_style = "card"
 
 
 @dataclass
@@ -344,7 +329,6 @@ class AppConfig:
             f"position={self.overlay.position}, "
             f"screen={self.overlay.screen}, "
             f"auto-hide={self.overlay.auto_hide_seconds}s, "
-            f"density={self.overlay.density}, "
-            f"style={self.overlay.overlay_style}"
+            f"density={self.overlay.density}"
         )
         logger.info(f"UI: tray-backend={self.ui.tray_backend}")

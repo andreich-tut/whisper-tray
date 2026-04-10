@@ -12,10 +12,20 @@ import pytest
 
 from whisper_tray.app import OVERLAY_INSTALL_MESSAGE, WhisperTrayApp
 from whisper_tray.overlay.controller import NullOverlayController
-from whisper_tray.state import AppState, AppStatePresenter, AppStateSnapshot
+from whisper_tray.state import (
+    AppState,
+    AppStatePresentation,
+    AppStatePresenter,
+    AppStateSnapshot,
+)
 from whisper_tray.tray.icon import TrayIcon
 from whisper_tray.tray.menu import TrayMenu
-from whisper_tray.tray.runtime import PystrayTrayRuntime, QtTrayRuntime, TrayRuntime
+from whisper_tray.tray.runtime import (
+    PystrayTrayRuntime,
+    QtOverlayHost,
+    QtTrayRuntime,
+    TrayRuntime,
+)
 
 
 class StrictFakeIcon:
@@ -52,6 +62,19 @@ class RecordingOverlay:
     def close(self) -> None:
         """Record cleanup for overlay lifecycle assertions."""
         self.closed = True
+
+
+def _make_presentation(state: AppState) -> AppStatePresentation:
+    """Build a minimal AppStatePresentation for test use."""
+    return AppStatePresentation(
+        state=state,
+        tray_title=state.value,
+        overlay_badge="",
+        overlay_primary="",
+        overlay_secondary=None,
+        icon_color="gray",
+        overlay_hint=None,
+    )
 
 
 class FailingQtRuntime(QtTrayRuntime):
@@ -110,6 +133,42 @@ class FakeQtSignal:
         """Invoke all registered callbacks."""
         for callback in self._callbacks:
             callback(*args)
+
+
+class FakeQtObject:
+    """Tiny QObject stand-in for signal-driven Qt host tests."""
+
+    def __init__(self) -> None:
+        """Mirror QObject's trivial construction for test doubles."""
+
+
+class FakeQtSignalDescriptor:
+    """Descriptor that gives each fake QObject instance its own signal."""
+
+    def __init__(self) -> None:
+        self._storage_name = ""
+
+    def __set_name__(self, owner: type[object], name: str) -> None:
+        """Remember where to store the per-instance signal."""
+        del owner
+        self._storage_name = f"__signal_{name}"
+
+    def __get__(self, instance: object, owner: type[object]) -> object:
+        """Create a fresh signal for each QObject instance on demand."""
+        del owner
+        if instance is None:
+            return self
+
+        signal = getattr(instance, self._storage_name, None)
+        if signal is None:
+            signal = FakeQtSignal()
+            setattr(instance, self._storage_name, signal)
+        return signal
+
+
+def fake_qt_signal(*_types: object) -> FakeQtSignalDescriptor:
+    """Build a fake Qt signal descriptor regardless of the declared payload."""
+    return FakeQtSignalDescriptor()
 
 
 class FakeQtAction:
@@ -185,6 +244,34 @@ class FakeQtMenu:
         return self._actions
 
 
+class FakeOverlayWindow:
+    """Overlay window stub that records lifecycle and presentation events."""
+
+    def __init__(self, *, position: str, screen_target: str) -> None:
+        self.position = position
+        self.screen_target = screen_target
+        self.anchor_updates: list[tuple[str, str]] = []
+        self.presentations: list[Any] = []
+        self.hide_calls = 0
+        self.closed = False
+
+    def update_anchor(self, position: str, screen_target: str) -> None:
+        """Record where the overlay is being anchored."""
+        self.anchor_updates.append((position, screen_target))
+
+    def show_presentation(self, presentation: Any) -> None:
+        """Record each rendered presentation."""
+        self.presentations.append(presentation)
+
+    def hide_now(self) -> None:
+        """Record immediate-hide requests."""
+        self.hide_calls += 1
+
+    def close(self) -> None:
+        """Record full window teardown."""
+        self.closed = True
+
+
 def _build_app(
     *,
     state: AppState,
@@ -216,7 +303,6 @@ def _build_app(
             screen=overlay_screen,
             auto_hide_seconds=overlay_auto_hide_seconds,
             density=overlay_density,
-            overlay_style="card",
         ),
         ui=SimpleNamespace(tray_backend=tray_backend),
     )
@@ -418,16 +504,15 @@ class TestWhisperTrayApp:
         """Enabling the overlay should create a live controller and refresh the menu."""
         app = _build_app(state=AppState.READY)
         live_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str, str]] = []
+        created: list[tuple[bool, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
-            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target, style))
+            created.append((enabled, position, screen_target))
             return live_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -439,7 +524,7 @@ class TestWhisperTrayApp:
         app._on_toggle_overlay(app._tray_icon_ref, None)
 
         assert app.config.overlay.enabled is True
-        assert created == [(True, "bottom-right", "primary", "card")]
+        assert created == [(True, "bottom-right", "primary")]
         assert original_overlay.closed is True
         pres = live_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -455,10 +540,8 @@ class TestWhisperTrayApp:
         app = _build_app(state=AppState.READY)
 
         app._tray_runtime = SimpleNamespace(
-            create_overlay_controller=(
-                lambda enabled, *, position, screen_target, style: (
-                    NullOverlayController()
-                )
+            create_overlay_controller=lambda enabled, *, position, screen_target: (
+                NullOverlayController()
             )
         )
 
@@ -478,16 +561,15 @@ class TestWhisperTrayApp:
         """Changing overlay position should restart the live overlay."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str, str]] = []
+        created: list[tuple[bool, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
-            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target, style))
+            created.append((enabled, position, screen_target))
             return replacement_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -499,7 +581,7 @@ class TestWhisperTrayApp:
         app._on_set_overlay_position("top-left", app._tray_icon_ref, None)
 
         assert app.config.overlay.position == "top-left"
-        assert created == [(True, "top-left", "primary", "card")]
+        assert created == [(True, "top-left", "primary")]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -511,16 +593,15 @@ class TestWhisperTrayApp:
         """Changing overlay display should restart the live overlay on that target."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str, str]] = []
+        created: list[tuple[bool, str, str]] = []
 
         def fake_create_overlay_controller(
             enabled: bool,
             *,
             position: str,
             screen_target: str,
-            style: str,
         ) -> object:
-            created.append((enabled, position, screen_target, style))
+            created.append((enabled, position, screen_target))
             return replacement_overlay if enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
@@ -532,7 +613,7 @@ class TestWhisperTrayApp:
         app._on_set_overlay_screen("cursor", app._tray_icon_ref, None)
 
         assert app.config.overlay.screen == "cursor"
-        assert created == [(True, "bottom-right", "cursor", "card")]
+        assert created == [(True, "bottom-right", "cursor")]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -661,7 +742,6 @@ class TestWhisperTrayApp:
                 *,
                 position: str,
                 screen_target: str,
-                style: str,
             ) -> Any:
                 """No-op overlay controller creation."""
                 return NullOverlayController()
@@ -692,3 +772,50 @@ class TestWhisperTrayApp:
         app.run()
 
         assert app._tray_icon_ref.notifications == [OVERLAY_INSTALL_MESSAGE]
+
+    def test_qt_overlay_host_reuses_single_window_for_anchor_updates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The shared Qt overlay host should keep one window and update its anchor."""
+        created_windows: list[FakeOverlayWindow] = []
+
+        class FakeRuntimeOverlayWindow(FakeOverlayWindow):
+            """Replacement overlay window used to isolate the Qt host test."""
+
+            def __init__(self, position: str, screen_target: str) -> None:
+                super().__init__(position=position, screen_target=screen_target)
+                created_windows.append(self)
+
+        fake_qtcore = SimpleNamespace(QObject=FakeQtObject, Signal=fake_qt_signal)
+        monkeypatch.setitem(sys.modules, "PySide6", SimpleNamespace())
+        monkeypatch.setitem(sys.modules, "PySide6.QtCore", fake_qtcore)
+        monkeypatch.setattr(
+            "whisper_tray.overlay.pyside_overlay.OverlayWindow",
+            FakeRuntimeOverlayWindow,
+        )
+
+        host = QtOverlayHost()
+        assert len(created_windows) == 1
+
+        first_controller = host.create_controller(
+            True,
+            position="bottom-right",
+            screen_target="primary",
+        )
+        first_controller.show_state(_make_presentation(AppState.READY))
+        assert len(created_windows) == 1
+        assert created_windows[0].anchor_updates[-1] == ("bottom-right", "primary")
+        assert len(created_windows[0].presentations) == 1
+
+        moved_controller = host.create_controller(
+            True,
+            position="top-left",
+            screen_target="cursor",
+        )
+        moved_controller.show_state(_make_presentation(AppState.PROCESSING))
+        assert len(created_windows) == 1
+        assert created_windows[0].anchor_updates[-1] == ("top-left", "cursor")
+        assert created_windows[0].presentations[-1].state == AppState.PROCESSING
+
+        host.close()
+        assert created_windows[0].closed is True

@@ -51,6 +51,10 @@ This document is a repo-specific working guide. It distinguishes between:
 - Keep imports grouped in isort-compatible order: standard library, third-party, then local imports.
 - Add module docstrings and docstrings for public classes and public functions. Private helpers only need docstrings when behavior is non-obvious.
 - Use `PascalCase` for classes, `snake_case` for functions and variables, `UPPER_SNAKE_CASE` for constants, and a leading `_` for private members.
+- New or touched code must pass the applicable formatter, lint, type-check, and pre-commit checks before handoff.
+- Use the simplest construct that matches the intent. Avoid syntax or abstraction that adds no semantic value.
+- String formatting must match the use case: plain strings for constant text, f-strings only when interpolating values, and parameterized logging for log messages.
+- The same code-quality expectations apply to production modules, tests, scripts, and repo tooling unless the repository explicitly documents an exception.
 - Avoid bare `except:`. Catch specific exceptions when practical. If a broad catch is necessary at a process boundary, log useful context and preserve safe behavior.
 - Never add secrets, tokens, sample credentials, or other sensitive material to the repo.
 - Use the module logger pattern `logger = logging.getLogger(__name__)` when a module emits logs.

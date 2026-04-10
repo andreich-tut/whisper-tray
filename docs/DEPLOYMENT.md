@@ -94,9 +94,31 @@ dist/WhisperTray/
 
 A system tray icon should appear. Hold `Ctrl+Shift+Space` to test recording.
 If you want to test the on-screen overlay in the packaged build, create a
-`.env` file next to the executable with `OVERLAY_ENABLED=true`.
+`.env` file next to the executable with settings like:
+
+```env
+OVERLAY_ENABLED=true
+TRAY_BACKEND=auto
+```
+
 If you want to compare the legacy and unified tray runtimes during Windows QA,
 set `TRAY_BACKEND=pystray` or `TRAY_BACKEND=qt` in that same `.env` file.
+
+### Overlay QA Matrix
+
+For Windows release verification, run this matrix against the packaged build:
+
+1. `TRAY_BACKEND=qt`
+2. `TRAY_BACKEND=pystray`
+
+For each combination, verify:
+
+- the overlay stays topmost and click-through
+- the overlay does not steal focus
+- the hotkey flow still records, transcribes, and pastes end to end
+- successful transcriptions stay visible until the clipboard changes
+- both `OVERLAY_SCREEN=primary` and `OVERLAY_SCREEN=cursor` behave correctly
+- packaged-build behavior matches the same settings in source mode
 
 ### Debug Build (with Console)
 
@@ -217,6 +239,10 @@ HOTKEY=ctrl,shift,space
 # Behavior settings
 AUTO_PASTE=true
 PASTE_DELAY=0.1
+
+# Optional overlay and tray runtime settings
+OVERLAY_ENABLED=true
+TRAY_BACKEND=auto
 ```
 
 ### No CUDA Installation Options

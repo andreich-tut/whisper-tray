@@ -404,7 +404,6 @@ class WhisperTrayApp:
             self.config.overlay.enabled,
             position=self.config.overlay.position,
             screen_target=self.config.overlay.screen,
-            style=self.config.overlay.overlay_style,
         )
 
         if self.config.overlay.enabled and isinstance(

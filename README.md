@@ -11,7 +11,7 @@ A cross-platform system tray application for global speech-to-text using OpenAI'
 - ⚡ **Auto-Paste** — Optional automatic paste into the focused text field (`Cmd+V` on macOS, `Ctrl+V` elsewhere)
 - 🔊 **VAD Filter** — Built-in voice activity detection filters silence and background noise
 - 🎨 **Status Indicator** — System tray icon changes color (green=idle, red=recording, orange=processing)
-- 🪟 **Optional Overlay** — PySide6-powered on-screen status pill with richer status copy, actionable error hints, and a shared Qt tray runtime when UI extras are installed
+- 🪟 **Optional Overlay** — PySide6-powered on-screen overlay with shared state-driven copy, actionable error hints, and a shared Qt tray runtime when UI extras are installed
 - 🚀 **CPU-Optimized** — `int8` quantization, greedy decoding, single worker thread — fast by default
 - 💻 **Cross-Platform** — Windows, Linux, macOS
 - 📦 **Standalone EXE** — Can be built as a portable executable (no Python required)
@@ -55,13 +55,18 @@ pip install -e ".[dev,ui]"
 4. **Release** the hotkey to transcribe (icon flashes orange while processing)
 5. Text is automatically copied to clipboard and pasted
 
+When the overlay is enabled, both styles reflect the same shared app-state
+model. Successful transcriptions enter a persistent `TRANSCRIBED` overlay state
+that stays visible until WhisperTray no longer owns the clipboard, a new
+recording starts, or an error replaces it.
+
 ### Tray Menu
 
 | Option | Description |
 |--------|-------------|
 | **Language** | Set transcription language: English, Russian, or Auto-Detect |
 | **Toggle Auto-Paste** | Enable/disable automatic pasting |
-| **Overlay** | Enable the optional on-screen overlay, choose its corner and display target, tune ready auto-hide behavior, switch between compact or detailed view, and surface actionable recovery hints for failures |
+| **Overlay** | Enable the optional on-screen overlay, choose its corner and display target, tune ready auto-hide behavior, switch between compact or detailed view, and surface actionable recovery hints for failures. |
 | **Exit** | Close the application |
 
 ### Icon Colors

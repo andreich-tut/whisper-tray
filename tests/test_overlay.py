@@ -25,12 +25,10 @@ from whisper_tray.overlay.pyside_overlay import (
     _WS_EX_NOACTIVATE,
     _WS_EX_TOOLWINDOW,
     _WS_EX_TRANSPARENT,
-    BlobWidget,
     apply_windows_overlay_styles,
+    create_overlay_window,
     enable_windows_per_monitor_dpi_awareness,
     geometry_contains_geometry,
-    resolve_blob_visual_spec,
-    resolve_blob_widget_size,
     resolve_overlay_coordinates,
     resolve_overlay_layout,
     resolve_overlay_reposition_screen,
@@ -52,14 +50,12 @@ class RecordingRuntime:
         commands: Any,
         position: str,
         screen_target: str,
-        style: str,
-        seen: list[tuple[str, str, str, Any]],
+        seen: list[tuple[str, str, Any]],
         received: threading.Event,
     ) -> None:
         self._commands = commands
         self._position = position
         self._screen_target = screen_target
-        self._style = style
         self._seen = seen
         self._received = received
 
@@ -72,7 +68,7 @@ class RecordingRuntime:
                 return
 
             self._seen.append(
-                (self._position, self._screen_target, self._style, command.presentation)
+                (self._position, self._screen_target, command.presentation)
             )
             self._received.set()
 
@@ -85,12 +81,10 @@ class FailingRuntime:
         commands: Any,
         position: str,
         screen_target: str,
-        style: str,
     ) -> None:
         self._commands = commands
         self._position = position
         self._screen_target = screen_target
-        self._style = style
 
     def run(self, startup_callback: Any) -> None:
         """Signal startup failure and raise like a broken Qt runtime."""
@@ -230,7 +224,6 @@ def test_create_overlay_controller_returns_null_when_disabled() -> None:
         False,
         position="top-left",
         screen_target="primary",
-        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -250,7 +243,6 @@ def test_create_overlay_controller_falls_back_when_backend_module_missing(
         True,
         position="top-left",
         screen_target="primary",
-        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -269,7 +261,6 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
         True,
         position="bottom-right",
         screen_target="primary",
-        style="blob",
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -277,20 +268,18 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
 
 def test_threaded_overlay_controller_forwards_state_updates() -> None:
     """Enabled overlays should forward presentations to the runtime thread."""
-    seen: list[tuple[str, str, str, object]] = []
+    seen: list[tuple[str, str, object]] = []
     received = threading.Event()
 
     def runtime_factory(
         commands: object,
         position: str,
         screen_target: str,
-        style: str,
     ) -> RecordingRuntime:
         return RecordingRuntime(
             commands,
             position,
             screen_target,
-            style,
             seen,
             received,
         )
@@ -299,7 +288,6 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
         True,
         position="top-left",
         screen_target="cursor",
-        style="blob",
         runtime_factory=runtime_factory,
     )
     presenter = AppStatePresenter()
@@ -312,7 +300,7 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
     assert received.wait(timeout=1.0) is True
     controller.close()
 
-    assert seen == [("top-left", "cursor", "blob", presentation)]
+    assert seen == [("top-left", "cursor", presentation)]
 
 
 def test_create_overlay_controller_falls_back_when_runtime_startup_fails() -> None:
@@ -321,7 +309,6 @@ def test_create_overlay_controller_falls_back_when_runtime_startup_fails() -> No
         True,
         position="top-left",
         screen_target="primary",
-        style="blob",
         runtime_factory=FailingRuntime,
     )
 
@@ -472,24 +459,6 @@ def test_geometry_contains_geometry_uses_overlay_center() -> None:
     assert geometry_contains_geometry(outer, inner) is True
 
 
-def test_resolve_blob_visual_spec_maps_transcribed_state() -> None:
-    """The transcribed state should use the calm green blob parameters."""
-    spec = resolve_blob_visual_spec(AppState.TRANSCRIBED)
-
-    assert spec.base_radius == 65
-    assert spec.amplitude_scale == 0.05
-    assert spec.speed_scale == 0.35
-    assert spec.saturation == 0.6
-    assert spec.dim_alpha == 90
-    assert spec.fixed_hue == 120
-
-
-def test_resolve_blob_widget_size_scales_for_high_dpi_screens() -> None:
-    """Blob widgets should scale with the screen device pixel ratio."""
-    assert resolve_blob_widget_size(1.0) == 300
-    assert resolve_blob_widget_size(1.5) == 450
-
-
 def test_resolve_overlay_theme_falls_back_to_neutral_palette() -> None:
     """Unknown colors should still produce a readable default overlay theme."""
     theme = resolve_overlay_theme("mystery")
@@ -611,36 +580,28 @@ def test_apply_windows_overlay_styles_returns_false_without_required_api() -> No
     assert applied is False
 
 
-def test_blob_widget_paint_smoke() -> None:
-    """Blob rendering should be able to paint into an offscreen surface."""
-    if not hasattr(BlobWidget, "render"):
-        pytest.skip("PySide6 is unavailable in this test environment.")
+def test_create_overlay_window_returns_card_window(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The overlay factory should instantiate the anchored overlay window."""
+    pytest.importorskip("PySide6")
+    created: list[tuple[str, str]] = []
 
-    pyside6 = pytest.importorskip("PySide6")
-    del pyside6
-    qtwidgets = pytest.importorskip("PySide6.QtWidgets")
-    qtgui = pytest.importorskip("PySide6.QtGui")
+    class FakeCardWindow:
+        """Minimal overlay-window stub used to observe constructor selection."""
 
-    _app = qtwidgets.QApplication.instance() or qtwidgets.QApplication([])
-    del _app
-    widget = BlobWidget()
-    widget.set_visual_state(AppState.RECORDING, device_pixel_ratio=1.0)
-    widget.advance_animation()
-    image_format = (
-        qtgui.QImage.Format.Format_ARGB32_Premultiplied
-        if hasattr(qtgui.QImage, "Format")
-        else qtgui.QImage.Format_ARGB32_Premultiplied
+        def __init__(self, position: str, screen_target: str) -> None:
+            created.append((position, screen_target))
+
+    monkeypatch.setattr(
+        "whisper_tray.overlay.pyside_overlay.OverlayWindow",
+        FakeCardWindow,
     )
-    image = qtgui.QImage(
-        widget.size(),
-        image_format,
-    )
-    image.fill(0)
-    painter = qtgui.QPainter(image)
-    try:
-        widget.render(painter)
-    finally:
-        painter.end()
-        widget.close()
 
-    assert not image.isNull()
+    window = create_overlay_window(
+        position="top-left",
+        screen_target="cursor",
+    )
+
+    assert isinstance(window, FakeCardWindow)
+    assert created == [("top-left", "cursor")]
