@@ -6,9 +6,7 @@ from whisper_tray.core.overlay import (
     OverlaySettings,
     ThreadedOverlayController,
 )
-from whisper_tray.overlay.controller import (
-    create_overlay_controller,
-)
+from whisper_tray.overlay.controller import create_overlay_controller
 
 __all__ = [
     "NullOverlayController",

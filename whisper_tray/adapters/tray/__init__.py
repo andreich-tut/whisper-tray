@@ -1,7 +1,10 @@
 """Tray adapter entry points."""
 
 from whisper_tray.adapters.tray.pystray_runtime import PystrayTrayRuntime
-from whisper_tray.adapters.tray.qt.overlay_host import QtOverlayController, QtOverlayHost
+from whisper_tray.adapters.tray.qt.overlay_host import (
+    QtOverlayController,
+    QtOverlayHost,
+)
 from whisper_tray.adapters.tray.qt.runtime import QtTrayRuntime
 from whisper_tray.adapters.tray.qt.tray_handle import QtTrayIconHandle
 from whisper_tray.adapters.tray.renderers import render_pystray_menu, render_qt_menu

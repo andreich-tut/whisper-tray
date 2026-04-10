@@ -36,10 +36,7 @@ from whisper_tray.overlay.pyside_presentation import (
     resolve_screen_from_geometry,
     update_last_resolved_screen,
 )
-from whisper_tray.overlay.pyside_runtime import (
-    OverlayWindow,
-    PySide6OverlayRuntime,
-)
+from whisper_tray.overlay.pyside_runtime import OverlayWindow, PySide6OverlayRuntime
 
 
 def create_overlay_window(

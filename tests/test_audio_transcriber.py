@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
-import whisper_tray.audio.cuda as cuda_module
-import whisper_tray.audio.transcriber as transcriber_module
+import whisper_tray.adapters.transcription.cuda as cuda_module
+import whisper_tray.adapters.transcription.transcriber as transcriber_module
 from whisper_tray.audio.transcriber import Transcriber
 from whisper_tray.audio.vad import build_transcribe_kwargs
 from whisper_tray.config import AudioConfig, ModelConfig

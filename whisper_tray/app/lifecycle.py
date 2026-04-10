@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+from typing import Any
 
 import numpy as np
 
@@ -22,6 +23,7 @@ from whisper_tray.app.ui import AppUiCoordinator
 from whisper_tray.app.workflow import AppWorkflowCoordinator
 from whisper_tray.app_constants import OVERLAY_INSTALL_MESSAGE
 from whisper_tray.config import AppConfig
+from whisper_tray.core.protocols.tray import TrayRuntime
 from whisper_tray.overlay import (
     NullOverlayController,
     OverlayController,
@@ -37,9 +39,10 @@ from whisper_tray.state import (
 )
 from whisper_tray.tray.icon import TrayIcon
 from whisper_tray.tray.menu import TrayMenu
-from whisper_tray.core.protocols.tray import TrayRuntime
-from whisper_tray.types import TrayIcon as PystrayIcon
-from whisper_tray.types import TrayMenuItem as PystrayMenuItem
+
+# pystray has no official type distribution; use Any stubs at this boundary
+PystrayIcon = Any
+PystrayMenuItem = Any
 
 logger = logging.getLogger(__name__)
 

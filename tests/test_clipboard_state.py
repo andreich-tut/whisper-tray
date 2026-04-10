@@ -21,7 +21,7 @@ class TestClipboardState:
         assert new_state is True
         assert mgr.auto_paste is True
 
-    @patch("whisper_tray.clipboard.core.pyperclip")
+    @patch("whisper_tray.adapters.clipboard.core.pyperclip")
     def test_owns_clipboard_returns_true_after_copy(
         self,
         mock_pyperclip: MagicMock,
@@ -34,7 +34,7 @@ class TestClipboardState:
 
         assert mgr.owns_clipboard() is True
 
-    @patch("whisper_tray.clipboard.core.pyperclip")
+    @patch("whisper_tray.adapters.clipboard.core.pyperclip")
     def test_owns_clipboard_returns_false_after_external_change(
         self,
         mock_pyperclip: MagicMock,

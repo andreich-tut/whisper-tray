@@ -12,7 +12,6 @@ from whisper_tray.config.ui import UiConfig
 from whisper_tray.core.config.app import AppConfig
 from whisper_tray.platform.defaults import MODEL_PRESETS, ModelPreset, _apply_preset
 
-
 _load_env_file()
 
 
@@ -28,4 +27,6 @@ __all__ = [
     "_apply_preset",
     "_env_candidate_paths",
     "_load_env_file",
+    "apply_cpu_thread_limits",
+    "log_config",
 ]

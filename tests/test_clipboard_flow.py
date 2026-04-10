@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import whisper_tray.clipboard.controller as controller_module
-import whisper_tray.clipboard.core as clipboard_core
+import whisper_tray.adapters.clipboard.controller as controller_module
+import whisper_tray.adapters.clipboard.core as clipboard_core
 from whisper_tray.clipboard import ClipboardManager, PasteAttemptResult
 
 
@@ -44,7 +44,7 @@ class TestClipboardFlow:
         else:
             assert mgr._paste_modifier.name == "ctrl"
 
-    @patch("whisper_tray.clipboard.core.pyperclip")
+    @patch("whisper_tray.adapters.clipboard.core.pyperclip")
     def test_copy_text(self, mock_pyperclip: MagicMock) -> None:
         """Test copying text to clipboard."""
         mgr = ClipboardManager(auto_paste=False)
@@ -69,7 +69,7 @@ class TestClipboardFlow:
             MagicMock(return_value=False),
         )
 
-        with patch("whisper_tray.clipboard.core.pyperclip") as mock_pyperclip:
+        with patch("whisper_tray.adapters.clipboard.core.pyperclip") as mock_pyperclip:
             mgr = ClipboardManager(auto_paste=True)
             mgr.copy_and_paste("hello")
 
@@ -103,7 +103,7 @@ class TestClipboardFlow:
         )
         monkeypatch.setattr(clipboard_core.time, "sleep", lambda _: None)
 
-        with patch("whisper_tray.clipboard.core.pyperclip") as mock_pyperclip:
+        with patch("whisper_tray.adapters.clipboard.core.pyperclip") as mock_pyperclip:
             mgr = ClipboardManager(auto_paste=True)
             result = mgr.copy_and_paste("hello")
 
@@ -143,7 +143,7 @@ class TestClipboardFlow:
         )
         monkeypatch.setattr(clipboard_core.time, "sleep", lambda _: None)
 
-        with patch("whisper_tray.clipboard.core.pyperclip") as mock_pyperclip:
+        with patch("whisper_tray.adapters.clipboard.core.pyperclip") as mock_pyperclip:
             mgr = ClipboardManager(auto_paste=True)
             result = mgr.copy_and_paste("hello")
 

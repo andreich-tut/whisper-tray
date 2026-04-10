@@ -64,20 +64,30 @@ The current hotspots justify the split:
   `session.py` (SessionActions); `app/actions/__init__.py` re-exports
   `AppSessionActions` as a composing facade; `app/session.py` is now a thin
   re-export shim pointing to `app/actions`
-- verification: `python3 -m compileall whisper_tray`
-- verification: `python3 -m compileall whisper_tray packaging`
-- verification: `venv/bin/python -m pytest tests/test_state_models.py tests/test_state_presentation.py tests/test_config_model.py tests/test_config_overlay.py tests/test_config_env.py tests/test_overlay.py tests/test_tray.py`
-- verification: `venv/bin/python -m pytest tests/test_tray.py tests/test_hotkey.py tests/test_audio_recorder.py tests/test_audio_transcriber.py tests/test_clipboard_flow.py tests/test_clipboard_windows_fallbacks.py`
-- verification: `venv/bin/python -m pytest tests/test_app.py tests/test_tray.py tests/test_overlay.py tests/test_state_models.py tests/test_state_presentation.py tests/test_config_model.py tests/test_config_overlay.py tests/test_config_env.py tests/test_hotkey.py tests/test_audio_recorder.py tests/test_audio_transcriber.py tests/test_clipboard_flow.py tests/test_clipboard_windows_fallbacks.py`
-- verification: `python3 -m py_compile scripts/windows/test_tray_icon.py`
-- next: the app-layer split is now complete; consider deleting the root-level
-  `app_workflow.py`, `app_ui.py`, `app_actions.py` facades if no external
-  callers remain, and wire up the remaining high-risk work: removing
-  `whisper_tray/types.py` by co-locating type aliases with their owning
-  adapters
-- stop point: paused after the finer-grained app-layer split into focused
-  workflow, UI, and action subpackages; all 104 tests pass, lint and mypy
-  clean on new files
+- current slice: deleted root-level compatibility facades `app_workflow.py`,
+  `app_ui.py`, and `app_actions.py` (no remaining callers); deleted
+  `whisper_tray/types.py` and co-located the `Any` stubs with their owning
+  boundary modules — pystray stubs in `app/lifecycle.py`, sounddevice stub
+  in `audio/recorder.py`, pynput stubs in `input/hotkey.py`, and pystray icon
+  stub in `tray/icon.py`
+- current slice: migrated actual implementations from legacy directories into
+  adapter modules — `adapters/audio/sounddevice_recorder.py` (AudioRecorder),
+  `adapters/transcription/` (cuda, fw_assets, model_load, vad, transcriber),
+  `adapters/hotkey/pynput_listener.py` (HotkeyListener),
+  `adapters/clipboard/` (controller, pyautogui_fallback, core),
+  `platform/windows/overlay_styles.py` (DPI/Win32 helpers),
+  `platform/windows/send_input.py` (SendInput keyboard injection),
+  `adapters/overlay/qt/runtime.py` (OverlayWindow, PySide6OverlayRuntime),
+  `adapters/tray/icon.py` (TrayIcon), `adapters/tray/qt/icon.py`
+  (pil_image_to_qicon), `adapters/tray/renderers.py`,
+  `adapters/tray/qt/tray_handle.py`, `adapters/tray/pystray_runtime.py`,
+  `adapters/tray/qt/overlay_host.py`, `adapters/tray/qt/runtime.py`; all
+  legacy directories are now thin re-export facades pointing to adapters;
+  test patch paths updated to target adapter modules, not legacy facades
+- verification: `venv/bin/python -m pytest tests/ -q` — 108 passed, flake8
+  clean, black/isort clean
+- next: reorganise tests into boundary-aligned directories matching adapters/
+  structure; then remove any legacy facades that have zero internal callers
 
 ## Target Structure
 

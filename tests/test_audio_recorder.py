@@ -47,7 +47,7 @@ class TestAudioRecorder:
         recorder = AudioRecorder()
         assert recorder.is_recording is False
 
-    @patch("whisper_tray.audio.recorder.sd")
+    @patch("whisper_tray.adapters.audio.sounddevice_recorder.sd")
     def test_start_recording(self, mock_sd: MagicMock) -> None:
         """Test starting recording."""
         mock_stream = MagicMock()
@@ -60,7 +60,7 @@ class TestAudioRecorder:
         mock_stream.start.assert_called_once()
         assert recorder.is_recording is True
 
-    @patch("whisper_tray.audio.recorder.sd")
+    @patch("whisper_tray.adapters.audio.sounddevice_recorder.sd")
     def test_stop_recording(self, mock_sd: MagicMock) -> None:
         """Test stopping recording."""
         mock_stream = MagicMock()

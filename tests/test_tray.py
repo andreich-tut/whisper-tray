@@ -789,7 +789,7 @@ class TestWhisperTrayApp:
         monkeypatch.setitem(sys.modules, "PySide6", SimpleNamespace())
         monkeypatch.setitem(sys.modules, "PySide6.QtCore", fake_qtcore)
         monkeypatch.setattr(
-            "whisper_tray.overlay.pyside_overlay.OverlayWindow",
+            "whisper_tray.adapters.tray.qt.overlay_host.OverlayWindow",
             FakeRuntimeOverlayWindow,
         )
 

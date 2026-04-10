@@ -34,7 +34,7 @@ class TestHotkeyListener:
         mock_key.name = "space"
         assert HotkeyListener._get_key_name(mock_key) == "space"
 
-    @patch("whisper_tray.input.hotkey.keyboard.Listener")
+    @patch("whisper_tray.adapters.hotkey.pynput_listener.keyboard.Listener")
     def test_start(self, mock_listener_class: MagicMock) -> None:
         """Test starting listener."""
         mock_listener_instance = MagicMock()
@@ -46,7 +46,7 @@ class TestHotkeyListener:
         mock_listener_class.assert_called_once()
         mock_listener_instance.start.assert_called_once()
 
-    @patch("whisper_tray.input.hotkey.keyboard.Listener")
+    @patch("whisper_tray.adapters.hotkey.pynput_listener.keyboard.Listener")
     def test_stop(self, mock_listener_class: MagicMock) -> None:
         """Test stopping listener."""
         mock_listener_instance = MagicMock()
