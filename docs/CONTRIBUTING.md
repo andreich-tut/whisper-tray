@@ -247,7 +247,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete build instructions.
 Quick build on Windows:
 
 ```bash
-pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm packaging/windows/whisper_tray.spec
 ```
 
 ---

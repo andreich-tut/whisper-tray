@@ -108,7 +108,7 @@ When a plan is superseded by a newer one, delete it. When a plan is fully implem
 See `docs/DEPLOYMENT.md`. Quick build on Windows:
 
 ```bash
-pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm packaging/windows/whisper_tray.spec
 ```
 
 CI runs on `windows-latest` and tests Python 3.12+.

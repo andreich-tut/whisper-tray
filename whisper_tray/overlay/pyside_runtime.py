@@ -6,7 +6,7 @@ import html
 import queue
 from typing import Any
 
-from whisper_tray.overlay.controller import (
+from whisper_tray.core.overlay import (
     OverlayCommand,
     OverlayCommandKind,
     OverlaySettings,
@@ -28,7 +28,7 @@ from whisper_tray.overlay.pyside_presentation import (
     resolve_overlay_theme,
     update_last_resolved_screen,
 )
-from whisper_tray.state import AppState, AppStatePresentation
+from whisper_tray.core.state import AppState, AppStatePresentation
 
 
 class OverlayWindow:

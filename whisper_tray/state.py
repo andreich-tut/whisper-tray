@@ -1,17 +1,17 @@
 """Public facade for application state and presentation models."""
 
-from whisper_tray.state_models import (
+from whisper_tray.core.presentation import (
+    AppStatePresenter,
+    ErrorPresentation,
+    describe_error,
+    format_hotkey,
+)
+from whisper_tray.core.state import (
     AppState,
     AppStatePresentation,
     AppStatePublisher,
     AppStateSnapshot,
     StateListener,
-)
-from whisper_tray.state_presentation import (
-    AppStatePresenter,
-    ErrorPresentation,
-    describe_error,
-    format_hotkey,
 )
 
 __all__ = [

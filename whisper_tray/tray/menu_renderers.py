@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from whisper_tray.tray.menu_model import MenuEntry
+from whisper_tray.core.tray_menu.model import MenuEntry
 
 
 def render_pystray_menu(entries: tuple[MenuEntry, ...]) -> Any:

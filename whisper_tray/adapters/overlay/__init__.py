@@ -1,0 +1,1 @@
+"""Overlay adapter entry points."""

@@ -63,14 +63,14 @@ pip install -e ".[build]"
 #### 2. Build the Executable
 
 ```bash
-pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm packaging/windows/whisper_tray.spec
 ```
 
 Or use PowerShell:
 
 ```powershell
 $env:DEVICE = "cuda"  # or "cpu"
-pyinstaller --clean --noconfirm build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm packaging/windows/whisper_tray.spec
 ```
 
 #### 3. Verify Build Output
@@ -125,7 +125,7 @@ For each combination, verify:
 For troubleshooting, build with a visible console:
 
 ```bash
-pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir build/windows/whisper_tray.spec
+pyinstaller --clean --noconfirm --name WhisperTray_DEBUG --console --onedir packaging/windows/whisper_tray.spec
 ```
 
 Run `dist\WhisperTray_DEBUG\WhisperTray_DEBUG.exe` to see console output.
