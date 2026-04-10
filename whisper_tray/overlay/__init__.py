@@ -3,6 +3,7 @@
 from whisper_tray.overlay.controller import (
     NullOverlayController,
     OverlayController,
+    OverlaySettings,
     ThreadedOverlayController,
     create_overlay_controller,
 )
@@ -10,6 +11,7 @@ from whisper_tray.overlay.controller import (
 __all__ = [
     "NullOverlayController",
     "OverlayController",
+    "OverlaySettings",
     "ThreadedOverlayController",
     "create_overlay_controller",
 ]

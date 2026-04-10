@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from whisper_tray.overlay import NullOverlayController, OverlayController
 from whisper_tray.overlay.controller import (
+    OverlaySettings,
     _pyside6_is_available,
     create_overlay_controller,
 )
@@ -28,10 +29,7 @@ class TrayRuntime(Protocol):
 
     def create_overlay_controller(
         self,
-        enabled: bool,
-        *,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> OverlayController:
         """Create an overlay controller compatible with this tray runtime."""
 
@@ -73,17 +71,10 @@ class PystrayTrayRuntime:
 
     def create_overlay_controller(
         self,
-        enabled: bool,
-        *,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> OverlayController:
         """Create the threaded overlay used by the legacy pystray runtime."""
-        return create_overlay_controller(
-            enabled,
-            position=position,
-            screen_target=screen_target,
-        )
+        return create_overlay_controller(settings)
 
 
 def _pil_image_to_qicon(image: Any) -> Any:
@@ -95,7 +86,7 @@ def _pil_image_to_qicon(image: Any) -> Any:
     image_format = (
         QImage.Format.Format_RGBA8888
         if hasattr(QImage, "Format")
-        else QImage.Format_RGBA8888
+        else getattr(QImage, "Format_RGBA8888")
     )
     qimage = QImage(buffer, rgba.width, rgba.height, image_format).copy()
     return QIcon(QPixmap.fromImage(qimage))
@@ -196,25 +187,25 @@ class QtOverlayController:
         self,
         bridge: Any,
         *,
-        enabled: bool,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> None:
         self._bridge = bridge
-        self._enabled = enabled
-        self._position = position
-        self._screen_target = screen_target
+        self._settings = settings
         self._closed = False
-        self._bridge.configure.emit(enabled, position, screen_target)
+        self._bridge.configure.emit(
+            settings.enabled,
+            settings.position,
+            settings.screen_target,
+        )
 
     def show_state(self, presentation: Any) -> None:
         """Render the latest presentation on the shared overlay window."""
-        if self._closed or not self._enabled:
+        if self._closed or not self._settings.enabled:
             return
         self._bridge.configure.emit(
             True,
-            self._position,
-            self._screen_target,
+            self._settings.position,
+            self._settings.screen_target,
         )
         self._bridge.show_presentation.emit(presentation)
 
@@ -285,19 +276,14 @@ class QtOverlayHost:
 
     def create_controller(
         self,
-        enabled: bool,
-        *,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> OverlayController:
         """Create a new controller facade for the shared overlay window."""
-        if not enabled:
+        if not settings.enabled:
             return NullOverlayController()
         return QtOverlayController(
             self._bridge,
-            enabled=enabled,
-            position=position,
-            screen_target=screen_target,
+            settings=settings,
         )
 
     def close(self) -> None:
@@ -323,7 +309,8 @@ class QtTrayRuntime:
 
         enable_windows_per_monitor_dpi_awareness()
         self._app = QApplication.instance() or QApplication([])
-        self._app.setQuitOnLastWindowClosed(False)
+        if hasattr(self._app, "setQuitOnLastWindowClosed"):
+            self._app.setQuitOnLastWindowClosed(False)
 
         if not QSystemTrayIcon.isSystemTrayAvailable():
             raise RuntimeError("Qt system tray is unavailable on this desktop session.")
@@ -362,16 +349,9 @@ class QtTrayRuntime:
 
     def create_overlay_controller(
         self,
-        enabled: bool,
-        *,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> OverlayController:
         """Create a main-thread overlay controller on the shared Qt runtime."""
         if self._overlay_host is None:
             raise RuntimeError("Qt runtime has not been prepared.")
-        return self._overlay_host.create_controller(
-            enabled,
-            position=position,
-            screen_target=screen_target,
-        )
+        return self._overlay_host.create_controller(settings)

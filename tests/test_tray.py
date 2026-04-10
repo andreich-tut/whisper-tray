@@ -11,7 +11,7 @@ from typing import Any, Callable
 import pytest
 
 from whisper_tray.app import OVERLAY_INSTALL_MESSAGE, WhisperTrayApp
-from whisper_tray.overlay.controller import NullOverlayController
+from whisper_tray.overlay.controller import NullOverlayController, OverlaySettings
 from whisper_tray.state import (
     AppState,
     AppStatePresentation,
@@ -504,16 +504,11 @@ class TestWhisperTrayApp:
         """Enabling the overlay should create a live controller and refresh the menu."""
         app = _build_app(state=AppState.READY)
         live_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[OverlaySettings] = []
 
-        def fake_create_overlay_controller(
-            enabled: bool,
-            *,
-            position: str,
-            screen_target: str,
-        ) -> object:
-            created.append((enabled, position, screen_target))
-            return live_overlay if enabled else NullOverlayController()
+        def fake_create_overlay_controller(settings: OverlaySettings) -> object:
+            created.append(settings)
+            return live_overlay if settings.enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
             create_overlay_controller=fake_create_overlay_controller
@@ -524,7 +519,13 @@ class TestWhisperTrayApp:
         app._on_toggle_overlay(app._tray_icon_ref, None)
 
         assert app.config.overlay.enabled is True
-        assert created == [(True, "bottom-right", "primary")]
+        assert created == [
+            OverlaySettings(
+                enabled=True,
+                position="bottom-right",
+                screen_target="primary",
+            )
+        ]
         assert original_overlay.closed is True
         pres = live_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -540,9 +541,7 @@ class TestWhisperTrayApp:
         app = _build_app(state=AppState.READY)
 
         app._tray_runtime = SimpleNamespace(
-            create_overlay_controller=lambda enabled, *, position, screen_target: (
-                NullOverlayController()
-            )
+            create_overlay_controller=lambda settings: NullOverlayController()
         )
 
         assert app._tray_icon_ref is not None
@@ -561,16 +560,11 @@ class TestWhisperTrayApp:
         """Changing overlay position should restart the live overlay."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[OverlaySettings] = []
 
-        def fake_create_overlay_controller(
-            enabled: bool,
-            *,
-            position: str,
-            screen_target: str,
-        ) -> object:
-            created.append((enabled, position, screen_target))
-            return replacement_overlay if enabled else NullOverlayController()
+        def fake_create_overlay_controller(settings: OverlaySettings) -> object:
+            created.append(settings)
+            return replacement_overlay if settings.enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
             create_overlay_controller=fake_create_overlay_controller
@@ -581,7 +575,13 @@ class TestWhisperTrayApp:
         app._on_set_overlay_position("top-left", app._tray_icon_ref, None)
 
         assert app.config.overlay.position == "top-left"
-        assert created == [(True, "top-left", "primary")]
+        assert created == [
+            OverlaySettings(
+                enabled=True,
+                position="top-left",
+                screen_target="primary",
+            )
+        ]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -593,16 +593,11 @@ class TestWhisperTrayApp:
         """Changing overlay display should restart the live overlay on that target."""
         app = _build_app(state=AppState.READY, overlay_enabled=True)
         replacement_overlay = RecordingOverlay()
-        created: list[tuple[bool, str, str]] = []
+        created: list[OverlaySettings] = []
 
-        def fake_create_overlay_controller(
-            enabled: bool,
-            *,
-            position: str,
-            screen_target: str,
-        ) -> object:
-            created.append((enabled, position, screen_target))
-            return replacement_overlay if enabled else NullOverlayController()
+        def fake_create_overlay_controller(settings: OverlaySettings) -> object:
+            created.append(settings)
+            return replacement_overlay if settings.enabled else NullOverlayController()
 
         app._tray_runtime = SimpleNamespace(
             create_overlay_controller=fake_create_overlay_controller
@@ -613,7 +608,13 @@ class TestWhisperTrayApp:
         app._on_set_overlay_screen("cursor", app._tray_icon_ref, None)
 
         assert app.config.overlay.screen == "cursor"
-        assert created == [(True, "bottom-right", "cursor")]
+        assert created == [
+            OverlaySettings(
+                enabled=True,
+                position="bottom-right",
+                screen_target="cursor",
+            )
+        ]
         assert original_overlay.closed is True
         pres = replacement_overlay.presentations[0]
         assert pres.overlay_primary == "Hold Ctrl+Shift+Space to dictate."
@@ -738,12 +739,10 @@ class TestWhisperTrayApp:
 
             def create_overlay_controller(
                 self,
-                enabled: bool,
-                *,
-                position: str,
-                screen_target: str,
+                settings: OverlaySettings,
             ) -> Any:
                 """No-op overlay controller creation."""
+                del settings
                 return NullOverlayController()
 
         app._tray_runtime = FakeTrayRuntime()
@@ -798,9 +797,11 @@ class TestWhisperTrayApp:
         assert len(created_windows) == 1
 
         first_controller = host.create_controller(
-            True,
-            position="bottom-right",
-            screen_target="primary",
+            OverlaySettings(
+                enabled=True,
+                position="bottom-right",
+                screen_target="primary",
+            )
         )
         first_controller.show_state(_make_presentation(AppState.READY))
         assert len(created_windows) == 1
@@ -808,9 +809,11 @@ class TestWhisperTrayApp:
         assert len(created_windows[0].presentations) == 1
 
         moved_controller = host.create_controller(
-            True,
-            position="top-left",
-            screen_target="cursor",
+            OverlaySettings(
+                enabled=True,
+                position="top-left",
+                screen_target="cursor",
+            )
         )
         moved_controller.show_state(_make_presentation(AppState.PROCESSING))
         assert len(created_windows) == 1

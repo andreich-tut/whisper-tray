@@ -9,6 +9,7 @@ import pytest
 
 from whisper_tray.overlay.controller import (
     NullOverlayController,
+    OverlaySettings,
     create_overlay_controller,
 )
 from whisper_tray.overlay.pyside_overlay import (
@@ -48,14 +49,13 @@ class RecordingRuntime:
     def __init__(
         self,
         commands: Any,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
         seen: list[tuple[str, str, Any]],
         received: threading.Event,
     ) -> None:
         self._commands = commands
-        self._position = position
-        self._screen_target = screen_target
+        self._position = settings.position
+        self._screen_target = settings.screen_target
         self._seen = seen
         self._received = received
 
@@ -79,12 +79,11 @@ class FailingRuntime:
     def __init__(
         self,
         commands: Any,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> None:
         self._commands = commands
-        self._position = position
-        self._screen_target = screen_target
+        self._position = settings.position
+        self._screen_target = settings.screen_target
 
     def run(self, startup_callback: Any) -> None:
         """Signal startup failure and raise like a broken Qt runtime."""
@@ -221,9 +220,11 @@ class FakeScreen:
 def test_create_overlay_controller_returns_null_when_disabled() -> None:
     """Disabled overlay should not start any UI backend."""
     controller = create_overlay_controller(
-        False,
-        position="top-left",
-        screen_target="primary",
+        OverlaySettings(
+            enabled=False,
+            position="top-left",
+            screen_target="primary",
+        ),
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -240,9 +241,11 @@ def test_create_overlay_controller_falls_back_when_backend_module_missing(
     monkeypatch.setitem(sys.modules, "whisper_tray.overlay.pyside_overlay", None)
 
     controller = create_overlay_controller(
-        True,
-        position="top-left",
-        screen_target="primary",
+        OverlaySettings(
+            enabled=True,
+            position="top-left",
+            screen_target="primary",
+        ),
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -258,9 +261,11 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
     )
 
     controller = create_overlay_controller(
-        True,
-        position="bottom-right",
-        screen_target="primary",
+        OverlaySettings(
+            enabled=True,
+            position="bottom-right",
+            screen_target="primary",
+        ),
     )
 
     assert isinstance(controller, NullOverlayController)
@@ -273,21 +278,21 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
 
     def runtime_factory(
         commands: object,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> RecordingRuntime:
         return RecordingRuntime(
             commands,
-            position,
-            screen_target,
+            settings,
             seen,
             received,
         )
 
     controller = create_overlay_controller(
-        True,
-        position="top-left",
-        screen_target="cursor",
+        OverlaySettings(
+            enabled=True,
+            position="top-left",
+            screen_target="cursor",
+        ),
         runtime_factory=runtime_factory,
     )
     presenter = AppStatePresenter()
@@ -306,9 +311,11 @@ def test_threaded_overlay_controller_forwards_state_updates() -> None:
 def test_create_overlay_controller_falls_back_when_runtime_startup_fails() -> None:
     """Broken UI boot should degrade to the no-op controller."""
     controller = create_overlay_controller(
-        True,
-        position="top-left",
-        screen_target="primary",
+        OverlaySettings(
+            enabled=True,
+            position="top-left",
+            screen_target="primary",
+        ),
         runtime_factory=FailingRuntime,
     )
 

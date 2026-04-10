@@ -48,6 +48,15 @@ class OverlayCommand:
 OverlayStartupCallback = Callable[[bool], None]
 
 
+@dataclass(frozen=True)
+class OverlaySettings:
+    """Explicit runtime settings for the optional overlay surface."""
+
+    enabled: bool
+    position: str = "bottom-right"
+    screen_target: str = "primary"
+
+
 class OverlayRuntime(Protocol):
     """Runtime implementation that owns the actual overlay event loop."""
 
@@ -56,7 +65,7 @@ class OverlayRuntime(Protocol):
 
 
 OverlayRuntimeFactory = Callable[
-    [queue.Queue[OverlayCommand], str, str],
+    [queue.Queue[OverlayCommand], OverlaySettings],
     OverlayRuntime,
 ]
 
@@ -84,8 +93,7 @@ class ThreadedOverlayController:
         self,
         runtime_factory: OverlayRuntimeFactory,
         *,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> None:
         self._commands: queue.Queue[OverlayCommand] = queue.Queue()
         self._closed = threading.Event()
@@ -93,7 +101,7 @@ class ThreadedOverlayController:
         self._startup_succeeded = False
         self._thread = threading.Thread(
             target=self._run_runtime,
-            args=(runtime_factory, position, screen_target),
+            args=(runtime_factory, settings),
             daemon=True,
             name="overlay-ui",
         )
@@ -108,12 +116,11 @@ class ThreadedOverlayController:
     def _run_runtime(
         self,
         runtime_factory: OverlayRuntimeFactory,
-        position: str,
-        screen_target: str,
+        settings: OverlaySettings,
     ) -> None:
         """Create and run the overlay backend."""
         try:
-            runtime = runtime_factory(self._commands, position, screen_target)
+            runtime = runtime_factory(self._commands, settings)
             runtime.run(self._mark_startup)
             self._mark_startup(True)
         except Exception:
@@ -149,10 +156,7 @@ class ThreadedOverlayController:
 
 
 def create_overlay_controller(
-    enabled: bool,
-    *,
-    position: str = "bottom-right",
-    screen_target: str = "primary",
+    settings: OverlaySettings,
     runtime_factory: OverlayRuntimeFactory | None = None,
 ) -> OverlayController:
     """
@@ -161,7 +165,7 @@ def create_overlay_controller(
     When the optional Qt dependency is installed, the overlay runs on its own UI
     thread so the existing pystray application loop can stay in place for now.
     """
-    if not enabled:
+    if not settings.enabled:
         return NullOverlayController()
 
     factory = runtime_factory
@@ -185,8 +189,7 @@ def create_overlay_controller(
     try:
         return ThreadedOverlayController(
             factory,
-            position=position,
-            screen_target=screen_target,
+            settings=settings,
         )
     except Exception:
         logger.warning(
