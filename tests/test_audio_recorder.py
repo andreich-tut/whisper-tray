@@ -1,11 +1,31 @@
 """Tests for audio recording module."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pytest
 
 from whisper_tray.audio.recorder import AudioRecorder
 from whisper_tray.config import AudioConfig
+
+
+@pytest.fixture(autouse=True)
+def _clear_audio_env() -> None:
+    """Keep recorder tests independent from config-focused env overrides."""
+    env_vars = [
+        "SAMPLE_RATE",
+        "MIN_RECORDING_DURATION",
+        "VAD_THRESHOLD",
+        "VAD_SILENCE_DURATION_MS",
+    ]
+    saved = {var: os.environ.pop(var, None) for var in env_vars}
+    try:
+        yield
+    finally:
+        for var, value in saved.items():
+            if value is not None:
+                os.environ[var] = value
 
 
 class TestAudioRecorder:
