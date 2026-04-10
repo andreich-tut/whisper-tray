@@ -10,21 +10,21 @@ from typing import Any, Callable
 
 import pytest
 
+from whisper_tray.adapters.tray import (
+    PystrayTrayRuntime,
+    QtOverlayHost,
+    QtTrayRuntime,
+    TrayRuntime,
+)
+from whisper_tray.adapters.tray.icon import TrayIcon
+from whisper_tray.adapters.tray.menu import TrayMenu
 from whisper_tray.app import OVERLAY_INSTALL_MESSAGE, WhisperTrayApp
-from whisper_tray.overlay.controller import NullOverlayController, OverlaySettings
+from whisper_tray.core.overlay import NullOverlayController, OverlaySettings
 from whisper_tray.state import (
     AppState,
     AppStatePresentation,
     AppStatePresenter,
     AppStateSnapshot,
-)
-from whisper_tray.tray.icon import TrayIcon
-from whisper_tray.tray.menu import TrayMenu
-from whisper_tray.tray.runtime import (
-    PystrayTrayRuntime,
-    QtOverlayHost,
-    QtTrayRuntime,
-    TrayRuntime,
 )
 
 

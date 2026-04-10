@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from whisper_tray.adapters.overlay.qt.runtime import OverlayWindow
-from whisper_tray.overlay import NullOverlayController, OverlayController
-from whisper_tray.overlay.controller import OverlaySettings
+from whisper_tray.core.overlay import (
+    NullOverlayController,
+    OverlayController,
+    OverlaySettings,
+)
 
 
 class QtOverlayController:

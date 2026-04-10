@@ -11,8 +11,8 @@ from whisper_tray.adapters.tray import (
     TrayRuntime,
     should_use_qt_tray,
 )
-from whisper_tray.overlay import NullOverlayController, OverlaySettings
-from whisper_tray.tray.menu import TrayMenu
+from whisper_tray.adapters.tray.menu import TrayMenu
+from whisper_tray.core.overlay import NullOverlayController, OverlaySettings
 
 if TYPE_CHECKING:
     from whisper_tray.app.lifecycle import WhisperTrayApp

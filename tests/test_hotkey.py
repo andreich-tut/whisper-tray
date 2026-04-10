@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from whisper_tray.input.hotkey import HotkeyListener
+from whisper_tray.adapters.hotkey.pynput_listener import HotkeyListener
 
 
 class TestHotkeyListener:

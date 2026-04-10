@@ -8,8 +8,8 @@ import pytest
 
 import whisper_tray.adapters.transcription.cuda as cuda_module
 import whisper_tray.adapters.transcription.transcriber as transcriber_module
-from whisper_tray.audio.transcriber import Transcriber
-from whisper_tray.audio.vad import build_transcribe_kwargs
+from whisper_tray.adapters.transcription.transcriber import Transcriber
+from whisper_tray.adapters.transcription.vad import build_transcribe_kwargs
 from whisper_tray.config import AudioConfig, ModelConfig
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
-from whisper_tray.state import AppState, AppStatePresentation
+from whisper_tray.core.state import AppState, AppStatePresentation
 
 
 @dataclass(frozen=True)

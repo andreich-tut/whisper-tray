@@ -1,4 +1,4 @@
-"""Overlay controller abstractions and fallbacks."""
+"""Factory for the overlay controller based on available dependencies."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def create_overlay_controller(
             )
             return NullOverlayController()
         try:
-            from whisper_tray.overlay.pyside_overlay import PySide6OverlayRuntime
+            from whisper_tray.adapters.overlay.qt.runtime import PySide6OverlayRuntime
         except ImportError:
             logger.warning(
                 "Overlay support requested, but PySide6 is not installed. "

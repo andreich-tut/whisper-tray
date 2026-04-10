@@ -8,7 +8,7 @@ import pytest
 
 import whisper_tray.adapters.clipboard.controller as controller_module
 import whisper_tray.adapters.clipboard.core as clipboard_core
-from whisper_tray.clipboard import ClipboardManager, PasteAttemptResult
+from whisper_tray.adapters.clipboard.core import ClipboardManager, PasteAttemptResult
 
 
 def _build_keyboard_controller() -> MagicMock:

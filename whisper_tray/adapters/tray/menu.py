@@ -1,14 +1,14 @@
-"""High-level tray menu facade with backend-specific renderers."""
+"""High-level tray menu class combining the core model with backend renderers."""
 
 from __future__ import annotations
 
 from typing import Any, Callable
 
+from whisper_tray.adapters.tray.renderers import render_pystray_menu, render_qt_menu
 from whisper_tray.core.tray_menu.callbacks import TrayMenuCallbacks
 from whisper_tray.core.tray_menu.definition import build_menu_entries
 from whisper_tray.core.tray_menu.model import MenuEntry
 from whisper_tray.core.tray_menu.state import build_tray_menu_state
-from whisper_tray.tray.menu_renderers import render_pystray_menu, render_qt_menu
 
 
 class TrayMenu:

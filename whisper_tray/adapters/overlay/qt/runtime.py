@@ -6,14 +6,7 @@ import html
 import queue
 from typing import Any
 
-from whisper_tray.core.overlay import (
-    OverlayCommand,
-    OverlayCommandKind,
-    OverlaySettings,
-    OverlayStartupCallback,
-)
-from whisper_tray.core.state import AppState, AppStatePresentation
-from whisper_tray.overlay.pyside_presentation import (
+from whisper_tray.adapters.overlay.qt.presentation import (
     OverlayLayout,
     resolve_overlay_coordinates,
     resolve_overlay_layout,
@@ -22,6 +15,13 @@ from whisper_tray.overlay.pyside_presentation import (
     resolve_overlay_theme,
     update_last_resolved_screen,
 )
+from whisper_tray.core.overlay import (
+    OverlayCommand,
+    OverlayCommandKind,
+    OverlaySettings,
+    OverlayStartupCallback,
+)
+from whisper_tray.core.state import AppState, AppStatePresentation
 from whisper_tray.platform.windows.overlay_styles import (
     apply_windows_overlay_styles,
     enable_windows_per_monitor_dpi_awareness,

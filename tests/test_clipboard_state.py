@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
-from whisper_tray.clipboard import ClipboardManager
+from whisper_tray.adapters.clipboard.core import ClipboardManager
 
 
 class TestClipboardState:

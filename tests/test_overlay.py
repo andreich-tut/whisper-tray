@@ -7,12 +7,19 @@ from typing import Any
 
 import pytest
 
-from whisper_tray.overlay.controller import (
-    NullOverlayController,
-    OverlaySettings,
-    create_overlay_controller,
+from whisper_tray.adapters.overlay.controller import create_overlay_controller
+from whisper_tray.adapters.overlay.qt.presentation import (
+    geometry_contains_geometry,
+    resolve_overlay_coordinates,
+    resolve_overlay_layout,
+    resolve_overlay_reposition_screen,
+    resolve_overlay_screen,
+    resolve_overlay_theme,
+    update_last_resolved_screen,
 )
-from whisper_tray.overlay.pyside_overlay import (
+from whisper_tray.adapters.overlay.qt.runtime import create_overlay_window
+from whisper_tray.core.overlay import NullOverlayController, OverlaySettings
+from whisper_tray.platform.windows.overlay_styles import (
     _DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
     _GWL_EXSTYLE,
     _HWND_TOPMOST,
@@ -27,18 +34,10 @@ from whisper_tray.overlay.pyside_overlay import (
     _WS_EX_TOOLWINDOW,
     _WS_EX_TRANSPARENT,
     apply_windows_overlay_styles,
-    create_overlay_window,
     enable_windows_per_monitor_dpi_awareness,
-    geometry_contains_geometry,
-    resolve_overlay_coordinates,
-    resolve_overlay_layout,
-    resolve_overlay_reposition_screen,
-    resolve_overlay_screen,
-    resolve_overlay_theme,
     resolve_windows_overlay_ex_style,
     should_use_card_shadow,
     should_use_window_opacity_fade,
-    update_last_resolved_screen,
 )
 from whisper_tray.state import AppState, AppStatePresenter, AppStateSnapshot
 
@@ -235,10 +234,10 @@ def test_create_overlay_controller_falls_back_when_backend_module_missing(
 ) -> None:
     """Missing optional UI dependency should degrade to the no-op controller."""
     monkeypatch.setattr(
-        "whisper_tray.overlay.controller._pyside6_is_available",
+        "whisper_tray.adapters.overlay.controller._pyside6_is_available",
         lambda: True,
     )
-    monkeypatch.setitem(sys.modules, "whisper_tray.overlay.pyside_overlay", None)
+    monkeypatch.setitem(sys.modules, "whisper_tray.adapters.overlay.qt.runtime", None)
 
     controller = create_overlay_controller(
         OverlaySettings(
@@ -256,7 +255,7 @@ def test_create_overlay_controller_falls_back_when_pyside6_missing(
 ) -> None:
     """Missing PySide6 should short-circuit before starting a UI thread."""
     monkeypatch.setattr(
-        "whisper_tray.overlay.controller._pyside6_is_available",
+        "whisper_tray.adapters.overlay.controller._pyside6_is_available",
         lambda: False,
     )
 
@@ -601,7 +600,7 @@ def test_create_overlay_window_returns_card_window(
             created.append((position, screen_target))
 
     monkeypatch.setattr(
-        "whisper_tray.overlay.pyside_overlay.OverlayWindow",
+        "whisper_tray.adapters.overlay.qt.runtime.OverlayWindow",
         FakeCardWindow,
     )
 

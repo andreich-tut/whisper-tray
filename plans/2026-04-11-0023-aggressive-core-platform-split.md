@@ -86,8 +86,18 @@ The current hotspots justify the split:
   test patch paths updated to target adapter modules, not legacy facades
 - verification: `venv/bin/python -m pytest tests/ -q` — 108 passed, flake8
   clean, black/isort clean
+- current slice: moved `create_overlay_controller` to `adapters/overlay/controller.py`,
+  moved `pyside_presentation` content to `adapters/overlay/qt/presentation.py`, moved
+  `TrayMenu` to `adapters/tray/menu.py`, inlined `_pyside6_is_available` in
+  `core/protocols/tray.py`, updated all internal callers in `app/`, `adapters/`, and
+  `core/` to import from canonical adapter/core paths, updated all test imports to
+  point at adapter modules, then deleted all legacy facades:
+  `audio/`, `input/`, `clipboard/`, `tray/`, `overlay/` packages; 108 passed, flake8
+  clean, black/isort clean
 - next: reorganise tests into boundary-aligned directories matching adapters/
-  structure; then remove any legacy facades that have zero internal callers
+  structure; split test_tray.py (824 LOC) and test_overlay.py (614 LOC) into focused
+  files; add missing core protocols (RecorderBackend, TranscriberBackend,
+  ClipboardPasteBackend, HotkeyBackend)
 
 ## Target Structure
 

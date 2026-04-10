@@ -6,8 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from whisper_tray.adapters.tray.qt.overlay_host import QtOverlayHost
 from whisper_tray.adapters.tray.qt.tray_handle import QtTrayIconHandle
-from whisper_tray.overlay import OverlayController
-from whisper_tray.overlay.controller import OverlaySettings
+from whisper_tray.core.overlay import OverlayController, OverlaySettings
 from whisper_tray.platform.windows.overlay_styles import (
     enable_windows_per_monitor_dpi_awareness,
 )

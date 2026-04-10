@@ -18,17 +18,19 @@ from whisper_tray.adapters.audio.sounddevice_recorder import AudioRecorder
 from whisper_tray.adapters.clipboard.core import ClipboardManager
 from whisper_tray.adapters.hotkey.pynput_listener import HotkeyListener
 from whisper_tray.adapters.transcription.transcriber import Transcriber
+from whisper_tray.adapters.tray.icon import TrayIcon
+from whisper_tray.adapters.tray.menu import TrayMenu
 from whisper_tray.app.session import AppSessionActions
 from whisper_tray.app.ui import AppUiCoordinator
 from whisper_tray.app.workflow import AppWorkflowCoordinator
 from whisper_tray.app_constants import OVERLAY_INSTALL_MESSAGE
 from whisper_tray.config import AppConfig
-from whisper_tray.core.protocols.tray import TrayRuntime
-from whisper_tray.overlay import (
+from whisper_tray.core.overlay import (
     NullOverlayController,
     OverlayController,
     OverlaySettings,
 )
+from whisper_tray.core.protocols.tray import TrayRuntime
 from whisper_tray.state import (
     AppState,
     AppStatePresentation,
@@ -37,8 +39,6 @@ from whisper_tray.state import (
     AppStateSnapshot,
     format_hotkey,
 )
-from whisper_tray.tray.icon import TrayIcon
-from whisper_tray.tray.menu import TrayMenu
 
 # pystray has no official type distribution; use Any stubs at this boundary
 PystrayIcon = Any

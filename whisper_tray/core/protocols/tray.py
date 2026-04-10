@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from importlib.util import find_spec
 from typing import TYPE_CHECKING, Protocol
 
 from whisper_tray.core.overlay import OverlayController, OverlaySettings
-from whisper_tray.overlay.controller import _pyside6_is_available
 
 if TYPE_CHECKING:
     from whisper_tray.app import WhisperTrayApp
@@ -29,4 +29,4 @@ class TrayRuntime(Protocol):
 
 def should_use_qt_tray() -> bool:
     """Return whether the optional Qt tray runtime is available."""
-    return _pyside6_is_available()
+    return find_spec("PySide6") is not None

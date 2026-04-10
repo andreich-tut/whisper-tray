@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from whisper_tray.overlay import OverlayController
-from whisper_tray.overlay.controller import OverlaySettings, create_overlay_controller
+from whisper_tray.adapters.overlay.controller import create_overlay_controller
+from whisper_tray.core.overlay import OverlayController, OverlaySettings
 
 if TYPE_CHECKING:
     from whisper_tray.app import WhisperTrayApp

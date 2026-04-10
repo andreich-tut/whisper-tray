@@ -1,5 +1,6 @@
 """Tray adapter entry points."""
 
+from whisper_tray.adapters.tray.menu import TrayMenu
 from whisper_tray.adapters.tray.pystray_runtime import PystrayTrayRuntime
 from whisper_tray.adapters.tray.qt.overlay_host import (
     QtOverlayController,
@@ -16,6 +17,7 @@ __all__ = [
     "QtOverlayHost",
     "QtTrayIconHandle",
     "QtTrayRuntime",
+    "TrayMenu",
     "TrayRuntime",
     "render_pystray_menu",
     "render_qt_menu",

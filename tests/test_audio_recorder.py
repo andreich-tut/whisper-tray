@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from whisper_tray.audio.recorder import AudioRecorder
+from whisper_tray.adapters.audio.sounddevice_recorder import AudioRecorder
 from whisper_tray.config import AudioConfig
 
 

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from whisper_tray.adapters.tray.menu import TrayMenu
 from whisper_tray.app.ui.overlay_runtime import OverlayRuntimeCoordinator
 from whisper_tray.app.ui.presentation import PresentationCoordinator
 from whisper_tray.app.ui.tray_updates import TrayUpdatesCoordinator
-from whisper_tray.overlay import OverlaySettings
+from whisper_tray.core.overlay import OverlaySettings
 from whisper_tray.state import AppState, AppStatePresenter, AppStateSnapshot
-from whisper_tray.tray.menu import TrayMenu
 
 if TYPE_CHECKING:
     from whisper_tray.app.lifecycle import WhisperTrayApp
