@@ -86,7 +86,8 @@ whisper-tray/
 
 ## Development Conventions
 
-- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow the coding style guide.
+- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow it as the canonical coding-style source for this repository.
+- **MANDATORY**: If any Markdown file in this repo conflicts with `prompts/CODESTYLE.md`, or with checked-in tool config such as `pyproject.toml`, `.flake8`, `.pre-commit-config.yaml`, or `scripts/validate-build.py`, follow the canonical code-style guide and checked-in config.
 - **Modular architecture**: Logic separated into domain-specific modules
 - **Configuration**: Type-safe dataclasses in `config.py`
 - **Pinned dependencies**: `requirements.txt` with exact versions

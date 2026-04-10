@@ -41,7 +41,8 @@ black whisper_tray/ tests/ && isort whisper_tray/ tests/ && flake8 whisper_tray/
 
 ## Architecture
 
-- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow the coding style guide.
+- **MANDATORY**: Before editing any code, read `prompts/CODESTYLE.md` and follow it as the canonical coding-style source for this repository.
+- **MANDATORY**: If any Markdown file in this repo conflicts with `prompts/CODESTYLE.md`, or with checked-in tool config such as `pyproject.toml`, `.flake8`, `.pre-commit-config.yaml`, or `scripts/validate-build.py`, follow the canonical code-style guide and checked-in config.
 
 The application is structured as independent subsystems coordinated by `app.py`:
 

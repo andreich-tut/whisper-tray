@@ -195,7 +195,7 @@ See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for:
 - Project architecture overview
 - Setting up development environment
 - Running tests and quality checks
-- Code style guidelines
+- Code style guidelines, with [prompts/CODESTYLE.md](prompts/CODESTYLE.md) as the canonical style source
 
 ## Troubleshooting
 

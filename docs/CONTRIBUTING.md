@@ -220,66 +220,23 @@ def test_hotkey_debounce():
 
 ## Code Style Guidelines
 
-### General Principles
+`prompts/CODESTYLE.md` is the canonical coding-style guide for WhisperTray.
 
-- Write complete, working code - no placeholders
-- Handle errors gracefully - never crash the tray
-- Use type hints for all function signatures
-- Keep functions focused and testable
-- Add docstrings to public functions and classes
+Before editing code:
 
-### Naming Conventions
+- Read `prompts/CODESTYLE.md` and follow its `Must`, `Prefer`, and `Legacy tolerated` guidance.
+- Treat checked-in tool config as the source of truth for formatter, lint, type-check, security, secrets, and validation rules.
+- If this file, another Markdown file, or an older example conflicts with `prompts/CODESTYLE.md`, `pyproject.toml`, `.flake8`, `.pre-commit-config.yaml`, or `scripts/validate-build.py`, follow the canonical style guide and checked-in config.
 
-- **Classes**: `PascalCase` (e.g., `HotkeyListener`, `AudioRecorder`)
-- **Functions/Variables**: `snake_case` (e.g., `on_hotkey_pressed`, `is_recording`)
-- **Constants**: `UPPER_SNAKE_CASE` (e.g., `MODEL_SIZE`, `AUTO_PASTE`)
-- **Private members**: Leading underscore (e.g., `_current_keys`)
+Key repo expectations, summarized:
 
-### Import Order
+- Keep configuration and environment parsing centralized in `config.py`.
+- Preserve CPU-first defaults, cross-platform safety, and graceful fallback behavior.
+- Do not block tray or hotkey responsiveness with long-running work.
+- Prefer typed dataclasses, protocols, and explicit result objects at subsystem boundaries.
+- Add or update deterministic pytest coverage for behavior changes.
 
-Imports are sorted automatically by `isort`:
-
-1. Standard library imports
-2. Third-party imports
-3. Local application imports
-
-### Error Handling
-
-```python
-# Good: Specific exception handling
-try:
-    result = self.model.transcribe(audio)
-except RuntimeError as e:
-    logger.error(f"Transcription failed: {e}")
-    return None
-
-# Bad: Bare except
-try:
-    result = self.model.transcribe(audio)
-except:
-    pass
-```
-
-### Logging
-
-Use the logging module, not `print()`:
-
-```python
-import logging
-
-logger = logging.getLogger(__name__)
-
-logger.info("Model loaded successfully")
-logger.warning("Recording too short, ignoring")
-logger.error(f"Failed to initialize: {e}")
-```
-
-### Threading
-
-- Main thread: pystray icon (blocks)
-- Background threads: model loading, transcription
-- Use `queue.Queue` for thread-safe communication
-- Use `threading.Event` for signaling between threads
+For naming, logging, typing, fallback behavior, testing seams, and definition-of-done requirements, use `prompts/CODESTYLE.md` instead of duplicating local style rules here.
 
 ---
 
