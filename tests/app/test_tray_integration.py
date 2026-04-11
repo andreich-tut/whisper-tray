@@ -1,23 +1,16 @@
-"""Tests for tray state rendering and updates."""
+"""App-level integration tests for tray state, actions, and runtime selection."""
 
 from __future__ import annotations
 
 import queue
-import sys
 import threading
 from types import SimpleNamespace
-from typing import Any, Callable
+from typing import Any
 
 import pytest
 
-from whisper_tray.adapters.tray import (
-    PystrayTrayRuntime,
-    QtOverlayHost,
-    QtTrayRuntime,
-    TrayRuntime,
-)
+from whisper_tray.adapters.tray import PystrayTrayRuntime, QtTrayRuntime, TrayRuntime
 from whisper_tray.adapters.tray.icon import TrayIcon
-from whisper_tray.adapters.tray.menu import TrayMenu
 from whisper_tray.app import OVERLAY_INSTALL_MESSAGE, WhisperTrayApp
 from whisper_tray.core.overlay import NullOverlayController, OverlaySettings
 from whisper_tray.state import (
@@ -96,182 +89,6 @@ class RecordingPystrayRuntime(PystrayTrayRuntime):
         self.prepared_apps.append(app)
 
 
-class FakeMenu(tuple):
-    """Small tuple-backed pystray menu stand-in for tests."""
-
-    def __new__(cls, *items: object) -> "FakeMenu":
-        return super().__new__(cls, items)
-
-
-class FakeMenuItem:
-    """Minimal menu item object used to inspect labels and callbacks."""
-
-    def __init__(
-        self,
-        text: str,
-        action: object,
-        checked: object | None = None,
-        radio: bool = False,
-    ) -> None:
-        self.text = text
-        self.action = action
-        self.checked = checked
-        self.radio = radio
-
-
-class FakeQtSignal:
-    """Minimal Qt-like signal used to test Qt tray menu wiring."""
-
-    def __init__(self) -> None:
-        self._callbacks: list[Callable[..., Any]] = []
-
-    def connect(self, callback: Callable[..., Any]) -> None:
-        """Record connected callbacks."""
-        self._callbacks.append(callback)
-
-    def emit(self, *args: object) -> None:
-        """Invoke all registered callbacks."""
-        for callback in self._callbacks:
-            callback(*args)
-
-
-class FakeQtObject:
-    """Tiny QObject stand-in for signal-driven Qt host tests."""
-
-    def __init__(self) -> None:
-        """Mirror QObject's trivial construction for test doubles."""
-
-
-class FakeQtSignalDescriptor:
-    """Descriptor that gives each fake QObject instance its own signal."""
-
-    def __init__(self) -> None:
-        self._storage_name = ""
-
-    def __set_name__(self, owner: type[object], name: str) -> None:
-        """Remember where to store the per-instance signal."""
-        del owner
-        self._storage_name = f"__signal_{name}"
-
-    def __get__(self, instance: object, owner: type[object]) -> object:
-        """Create a fresh signal for each QObject instance on demand."""
-        del owner
-        if instance is None:
-            return self
-
-        signal = getattr(instance, self._storage_name, None)
-        if signal is None:
-            signal = FakeQtSignal()
-            setattr(instance, self._storage_name, signal)
-        return signal
-
-
-def fake_qt_signal(*_types: object) -> FakeQtSignalDescriptor:
-    """Build a fake Qt signal descriptor regardless of the declared payload."""
-    return FakeQtSignalDescriptor()
-
-
-class FakeQtAction:
-    """Small QAction stand-in for menu creation tests."""
-
-    def __init__(self, text: str, submenu: "FakeQtMenu" | None = None) -> None:
-        self._text = text
-        self._submenu = submenu
-        self._checked = False
-        self._checkable = False
-        self.triggered = FakeQtSignal()
-
-    def text(self) -> str:
-        """Return the visible label."""
-        return self._text
-
-    def menu(self) -> "FakeQtMenu" | None:
-        """Return the attached submenu when one exists."""
-        return self._submenu
-
-    def setCheckable(self, value: bool) -> None:
-        """Record whether the action is checkable."""
-        self._checkable = value
-
-    def setChecked(self, value: bool) -> None:
-        """Record the current checked state."""
-        self._checked = value
-
-    def isChecked(self) -> bool:
-        """Expose the current checked state for assertions."""
-        return self._checked
-
-
-class FakeQtActionGroup:
-    """Small QActionGroup stand-in for menu exclusivity tests."""
-
-    def __init__(self, parent: object) -> None:
-        self.parent = parent
-        self.actions: list[FakeQtAction] = []
-        self.exclusive = False
-
-    def addAction(self, action: FakeQtAction) -> None:
-        """Record actions registered with the group."""
-        self.actions.append(action)
-
-    def setExclusive(self, value: bool) -> None:
-        """Record whether the group is exclusive."""
-        self.exclusive = value
-
-
-class FakeQtMenu:
-    """Small QMenu stand-in for Qt tray menu tests."""
-
-    def __init__(self, title: str = "") -> None:
-        self._title = title
-        self._actions: list[FakeQtAction] = []
-        self.aboutToShow = FakeQtSignal()
-
-    def addAction(self, label: str) -> FakeQtAction:
-        """Append an action to the menu."""
-        action = FakeQtAction(label)
-        self._actions.append(action)
-        return action
-
-    def addMenu(self, label: str) -> "FakeQtMenu":
-        """Append a submenu and return it."""
-        submenu = FakeQtMenu(label)
-        self._actions.append(FakeQtAction(label, submenu))
-        return submenu
-
-    def actions(self) -> list[FakeQtAction]:
-        """Return the current actions in insertion order."""
-        return self._actions
-
-
-class FakeOverlayWindow:
-    """Overlay window stub that records lifecycle and presentation events."""
-
-    def __init__(self, *, position: str, screen_target: str) -> None:
-        self.position = position
-        self.screen_target = screen_target
-        self.anchor_updates: list[tuple[str, str]] = []
-        self.presentations: list[Any] = []
-        self.hide_calls = 0
-        self.closed = False
-
-    def update_anchor(self, position: str, screen_target: str) -> None:
-        """Record where the overlay is being anchored."""
-        self.anchor_updates.append((position, screen_target))
-
-    def show_presentation(self, presentation: Any) -> None:
-        """Record each rendered presentation."""
-        self.presentations.append(presentation)
-
-    def hide_now(self) -> None:
-        """Record immediate-hide requests."""
-        self.hide_calls += 1
-
-    def close(self) -> None:
-        """Record full window teardown."""
-        self.closed = True
-
-
 def _build_app(
     *,
     state: AppState,
@@ -317,135 +134,8 @@ def _build_app(
     return app
 
 
-class TestWhisperTrayApp:
-    """Test tray state updates on the app orchestrator."""
-
-    def test_tray_menu_includes_overlay_controls(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Overlay enable and position controls should be present in the tray menu."""
-        fake_pystray = SimpleNamespace(Menu=FakeMenu, MenuItem=FakeMenuItem)
-        monkeypatch.setitem(sys.modules, "pystray", fake_pystray)
-
-        menu = TrayMenu(
-            get_overlay_enabled_state=lambda: True,
-            get_overlay_position_state=lambda: "top-left",
-            get_overlay_screen_state=lambda: "cursor",
-            get_overlay_auto_hide_state=lambda: 0.0,
-            get_overlay_density_state=lambda: "compact",
-        ).create_menu()
-
-        overlay_item = menu[2]
-        overlay_menu = overlay_item.action
-        enabled_item = overlay_menu[0]
-        position_item = overlay_menu[1]
-        display_item = overlay_menu[2]
-        auto_hide_item = overlay_menu[3]
-        view_item = overlay_menu[4]
-        position_menu = position_item.action
-        display_menu = display_item.action
-        auto_hide_menu = auto_hide_item.action
-        view_menu = view_item.action
-
-        assert overlay_item.text == "Overlay"
-        assert enabled_item.text == "Enabled"
-        assert enabled_item.checked(None) is True
-        assert position_item.text == "Position"
-        assert [item.text for item in position_menu] == [
-            "Top Left",
-            "Top Right",
-            "Bottom Left",
-            "Bottom Right",
-        ]
-        assert all(item.radio is True for item in position_menu)
-        assert position_menu[0].checked(None) is True
-        assert position_menu[-1].checked(None) is False
-        assert display_item.text == "Display"
-        assert [item.text for item in display_menu] == [
-            "Primary Display",
-            "Cursor Display",
-        ]
-        assert all(item.radio is True for item in display_menu)
-        assert display_menu[0].checked(None) is False
-        assert display_menu[1].checked(None) is True
-        assert auto_hide_item.text == "Ready Auto-Hide"
-        assert [item.text for item in auto_hide_menu] == [
-            "Stay Visible",
-            "1.5 Seconds",
-            "3 Seconds",
-            "5 Seconds",
-        ]
-        assert all(item.radio is True for item in auto_hide_menu)
-        assert auto_hide_menu[0].checked(None) is True
-        assert auto_hide_menu[1].checked(None) is False
-        assert view_item.text == "View"
-        assert [item.text for item in view_menu] == ["Detailed", "Compact"]
-        assert all(item.radio is True for item in view_menu)
-        assert view_menu[0].checked(None) is False
-        assert view_menu[1].checked(None) is True
-
-    def test_qt_tray_menu_refreshes_overlay_checks(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Qt tray menus should mirror the same dynamic overlay controls."""
-        fake_qtwidgets = SimpleNamespace(QMenu=FakeQtMenu)
-        fake_qtgui = SimpleNamespace(QActionGroup=FakeQtActionGroup)
-        monkeypatch.setitem(sys.modules, "PySide6", SimpleNamespace())
-        monkeypatch.setitem(sys.modules, "PySide6.QtGui", fake_qtgui)
-        monkeypatch.setitem(sys.modules, "PySide6.QtWidgets", fake_qtwidgets)
-
-        state: dict[str, Any] = {
-            "overlay_enabled": False,
-            "overlay_position": "bottom-right",
-            "overlay_screen": "primary",
-            "overlay_auto_hide": 1.5,
-            "overlay_density": "detailed",
-        }
-
-        menu = TrayMenu(
-            get_overlay_enabled_state=lambda: state["overlay_enabled"],
-            get_overlay_position_state=lambda: state["overlay_position"],
-            get_overlay_screen_state=lambda: state["overlay_screen"],
-            get_overlay_auto_hide_state=lambda: state["overlay_auto_hide"],
-            get_overlay_density_state=lambda: state["overlay_density"],
-        ).create_qt_menu(StrictFakeIcon())
-
-        state["overlay_enabled"] = True
-        state["overlay_position"] = "top-left"
-        state["overlay_screen"] = "cursor"
-        state["overlay_auto_hide"] = 0.0
-        state["overlay_density"] = "compact"
-        menu.aboutToShow.emit()
-
-        overlay_menu = menu.actions()[2].menu()
-        assert overlay_menu is not None
-
-        enabled_action = overlay_menu.actions()[0]
-        position_menu = overlay_menu.actions()[1].menu()
-        display_menu = overlay_menu.actions()[2].menu()
-        auto_hide_menu = overlay_menu.actions()[3].menu()
-        view_menu = overlay_menu.actions()[4].menu()
-
-        assert enabled_action.isChecked() is True
-        assert (
-            position_menu is not None and position_menu.actions()[0].isChecked() is True
-        )
-        assert (
-            display_menu is not None and display_menu.actions()[1].isChecked() is True
-        )
-        assert (
-            auto_hide_menu is not None
-            and auto_hide_menu.actions()[0].isChecked() is True
-        )
-        assert view_menu is not None and view_menu.actions()[1].isChecked() is True
-        action_groups = getattr(menu, "_action_groups")
-        assert len(action_groups) == 5
-        assert all(group.exclusive is True for group in action_groups)
-        assert [action.text() for action in action_groups[0].actions] == [
-            "English",
-            "Russian",
-            "Auto-Detect",
-        ]
+class TestTrayIconUpdates:
+    """Tests for tray icon and title updates from app state."""
 
     def test_update_tray_icon_sets_ready_title(self) -> None:
         """Ready state should update both icon image and title."""
@@ -500,6 +190,10 @@ class TestWhisperTrayApp:
         assert app._tray_icon_ref is not None
         assert app._tray_icon_ref.title == "WhisperTray (CPU mode) - Ready"
 
+
+class TestOverlayActions:
+    """Tests for overlay toggle, position, screen, auto-hide, and density actions."""
+
     def test_toggle_overlay_recreates_live_overlay(self) -> None:
         """Enabling the overlay should create a live controller and refresh the menu."""
         app = _build_app(state=AppState.READY)
@@ -534,9 +228,7 @@ class TestWhisperTrayApp:
         assert app._tray_icon_ref.notifications == [msg]
         assert app._tray_icon_ref.menu_updates == 1
 
-    def test_toggle_overlay_rolls_back_when_ui_backend_missing(
-        self,
-    ) -> None:
+    def test_toggle_overlay_rolls_back_when_ui_backend_missing(self) -> None:
         """Requested overlays should fall back cleanly when Qt is unavailable."""
         app = _build_app(state=AppState.READY)
 
@@ -652,6 +344,10 @@ class TestWhisperTrayApp:
         assert pres.overlay_secondary is None
         assert app._tray_icon_ref.notifications == ["Overlay view: Compact"]
         assert app._tray_icon_ref.menu_updates == 1
+
+
+class TestTrayRuntimeSelection:
+    """Tests for tray runtime backend selection and fallback behavior."""
 
     def test_create_tray_runtime_prefers_qt_when_available(
         self, monkeypatch: pytest.MonkeyPatch
@@ -771,54 +467,3 @@ class TestWhisperTrayApp:
         app.run()
 
         assert app._tray_icon_ref.notifications == [OVERLAY_INSTALL_MESSAGE]
-
-    def test_qt_overlay_host_reuses_single_window_for_anchor_updates(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """The shared Qt overlay host should keep one window and update its anchor."""
-        created_windows: list[FakeOverlayWindow] = []
-
-        class FakeRuntimeOverlayWindow(FakeOverlayWindow):
-            """Replacement overlay window used to isolate the Qt host test."""
-
-            def __init__(self, position: str, screen_target: str) -> None:
-                super().__init__(position=position, screen_target=screen_target)
-                created_windows.append(self)
-
-        fake_qtcore = SimpleNamespace(QObject=FakeQtObject, Signal=fake_qt_signal)
-        monkeypatch.setitem(sys.modules, "PySide6", SimpleNamespace())
-        monkeypatch.setitem(sys.modules, "PySide6.QtCore", fake_qtcore)
-        monkeypatch.setattr(
-            "whisper_tray.adapters.tray.qt.overlay_host.OverlayWindow",
-            FakeRuntimeOverlayWindow,
-        )
-
-        host = QtOverlayHost()
-        assert len(created_windows) == 1
-
-        first_controller = host.create_controller(
-            OverlaySettings(
-                enabled=True,
-                position="bottom-right",
-                screen_target="primary",
-            )
-        )
-        first_controller.show_state(_make_presentation(AppState.READY))
-        assert len(created_windows) == 1
-        assert created_windows[0].anchor_updates[-1] == ("bottom-right", "primary")
-        assert len(created_windows[0].presentations) == 1
-
-        moved_controller = host.create_controller(
-            OverlaySettings(
-                enabled=True,
-                position="top-left",
-                screen_target="cursor",
-            )
-        )
-        moved_controller.show_state(_make_presentation(AppState.PROCESSING))
-        assert len(created_windows) == 1
-        assert created_windows[0].anchor_updates[-1] == ("top-left", "cursor")
-        assert created_windows[0].presentations[-1].state == AppState.PROCESSING
-
-        host.close()
-        assert created_windows[0].closed is True

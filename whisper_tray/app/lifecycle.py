@@ -20,10 +20,10 @@ from whisper_tray.adapters.hotkey.pynput_listener import HotkeyListener
 from whisper_tray.adapters.transcription.transcriber import Transcriber
 from whisper_tray.adapters.tray.icon import TrayIcon
 from whisper_tray.adapters.tray.menu import TrayMenu
+from whisper_tray.app.constants import OVERLAY_INSTALL_MESSAGE
 from whisper_tray.app.session import AppSessionActions
 from whisper_tray.app.ui import AppUiCoordinator
 from whisper_tray.app.workflow import AppWorkflowCoordinator
-from whisper_tray.app_constants import OVERLAY_INSTALL_MESSAGE
 from whisper_tray.config import AppConfig
 from whisper_tray.core.overlay import (
     NullOverlayController,

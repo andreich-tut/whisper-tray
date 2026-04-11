@@ -94,10 +94,27 @@ The current hotspots justify the split:
   point at adapter modules, then deleted all legacy facades:
   `audio/`, `input/`, `clipboard/`, `tray/`, `overlay/` packages; 108 passed, flake8
   clean, black/isort clean
-- next: reorganise tests into boundary-aligned directories matching adapters/
-  structure; split test_tray.py (824 LOC) and test_overlay.py (614 LOC) into focused
-  files; add missing core protocols (RecorderBackend, TranscriberBackend,
-  ClipboardPasteBackend, HotkeyBackend)
+- current slice: reorganised all tests into boundary-aligned directories;
+  split test_tray.py into adapters/tray/test_menu.py, adapters/tray/test_qt_runtime.py,
+  and app/test_tray_integration.py; split test_overlay.py into
+  adapters/overlay/test_controller.py, adapters/overlay/test_qt_presentation.py,
+  adapters/overlay/test_qt_runtime.py, and platform/windows/test_overlay_styles.py;
+  moved all flat test files under tests/app/, tests/core/config/, tests/core/state/,
+  tests/core/presentation/, tests/adapters/{audio,clipboard,hotkey,transcription}/,
+  and tests/platform/windows/; all 108 tests pass, flake8/black/isort clean;
+  core protocols (RecorderBackend, TranscriberBackend, ClipboardPasteBackend,
+  HotkeyBackend) were already complete from the previous slice
+- current slice: deleted the 5 legacy state sub-facades (state_models.py,
+  state_presentation.py, state_presenter.py, state_errors.py, state_formatting.py)
+  — no callers remained; state.py continues as the sole public re-export facade
+  pointing at core/state/ and core/presentation/; deleted whisper_tray/whisper_tray.py
+  (deprecated shim, no remaining callers); 108 passed, flake8 clean
+- current slice: deleted 5 config sub-shims (config/audio.py, config/hotkey.py,
+  config/model.py, config/overlay.py, config/ui.py) — config/__init__.py now imports
+  directly from core/config/; moved app_constants.py to app/constants.py and updated
+  3 callers (app/__init__.py, app/lifecycle.py, app/actions/overlay.py); 108 passed,
+  flake8/isort clean
+- status: complete — all plan goals achieved
 
 ## Target Structure
 

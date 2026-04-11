@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from whisper_tray.app_constants import OVERLAY_INSTALL_MESSAGE
+from whisper_tray.app.constants import OVERLAY_INSTALL_MESSAGE
 
 if TYPE_CHECKING:
     from whisper_tray.app.lifecycle import WhisperTrayApp
